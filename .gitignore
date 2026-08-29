@@ -6,3 +6,7 @@ llm-cache/
 .cache/
 coverage/
 *.log
+
+# Corpus: fetched, not committed. See data/PROVENANCE.md
+data/*.json
+data/*.tar.gz
