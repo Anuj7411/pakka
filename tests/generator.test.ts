@@ -68,8 +68,19 @@ describe('rng: determinism', () => {
     expect(() => new Rng(1.5)).toThrow(TypeError);
   });
 
-  it('pick throws on an empty array instead of returning undefined', () => {
-    expect(() => new Rng(1).pick([])).toThrow(RangeError);
+  it('pick throws its OWN error on an empty array', () => {
+    // Asserting only the error TYPE passes for the wrong reason: without the
+    // guard, pick calls int(0, -1) which also throws RangeError. Mutation
+    // testing caught that. Assert the message so the guard is actually pinned.
+    expect(() => new Rng(1).pick([])).toThrow(/empty array/);
+  });
+
+  it('int rejects min > max but ACCEPTS min === max', () => {
+    // Pins the boundary. `min >= max` would reject the single-element case,
+    // which pick() relies on for one-item pools.
+    expect(() => new Rng(1).int(9, 3)).toThrow(/min exceeds max/);
+    expect(new Rng(1).int(4, 4)).toBe(4);
+    expect(new Rng(1).pick(['only'])).toBe('only');
   });
 
   it('shuffle never mutates its input and preserves multiset', () => {

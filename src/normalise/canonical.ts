@@ -12,7 +12,7 @@
  *  - Numbers must be finite. NaN and ±Infinity have no canonical form, and
  *    JSON.stringify silently turns them into null — a silent corruption we
  *    refuse instead.
- *  - -0 is written as 0. They are the same quantity of money.
+ *  - -0 and 0 serialise identically. String(-0) is already "0"; no guard needed.
  *  - `undefined` properties are dropped; an explicit `null` is kept. Absent and
  *    null-valued are different statements.
  *  - Arrays keep order. Order is semantic for cart lines.
@@ -51,11 +51,13 @@ export function canonicalise(value: unknown, path = '$'): string {
           `JSON.stringify would silently write null.`,
       );
     }
-    // Object.is distinguishes -0 from 0; they must not hash differently.
-    return Object.is(n, -0) ? '0' : String(n);
+    // -0 needs no special case: String(-0) is already "0", so 0 and -0 both
+    // serialise identically. A guard here was dead code — mutation testing
+    // surfaced it by mutating the guard with no test able to notice.
+    return String(n);
   }
 
-  if (t === 'boolean') return n2s(value as boolean);
+  if (t === 'boolean') return value ? 'true' : 'false';
 
   if (t === 'bigint') {
     throw new CanonicalisationError(
@@ -89,26 +91,18 @@ export function canonicalise(value: unknown, path = '$'): string {
 
   // Plain object.
   const obj = value as Record<string, unknown>;
+  // Default sort is ALREADY UTF-16 code-unit order, and unlike localeCompare
+  // it does not vary by ICU build — so hashes stay machine-independent. A
+  // hand-written comparator carried an unreachable equal-branch (Object.keys
+  // never repeats a key), which mutation testing exposed as dead code.
   const keys = Object.keys(obj)
     .filter((k) => obj[k] !== undefined)
-    .sort(compareCodeUnits);
+    .sort();
 
   const parts = keys.map(
     (k) => `${JSON.stringify(k.normalize('NFC'))}:${canonicalise(obj[k], `${path}.${k}`)}`,
   );
   return `{${parts.join(',')}}`;
-}
-
-function n2s(b: boolean): string {
-  return b ? 'true' : 'false';
-}
-
-/**
- * Sort by UTF-16 code unit, not locale. `localeCompare` varies by ICU build
- * and would make hashes machine-dependent.
- */
-function compareCodeUnits(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** `sha256:<hex>` over the canonical form. */

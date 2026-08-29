@@ -1,94 +1,119 @@
-# Testing report — Day 1
+# Testing report
 
 A project whose entire claim is "we measure honestly" cannot ship a test suite it has not
 measured. This is what was done and what it found.
 
-## Summary
+## Summary (through Day 2)
 
 | Measure | Result |
 |---|---|
-| Tests | **87** across 7 files |
-| Line / branch / function coverage | **100 / 100 / 100** |
-| Mutation score (Stryker, `coverageAnalysis: off`) | **94.14%** (305/324) |
-| Behavioural mutants surviving | **3 reported — all three investigated by hand; 0 are real gaps** |
-| Real defects found by testing | **1** (money precision, see below) |
+| Tests | **164** across 11 files |
+| Line / branch / function coverage (Day 1 modules) | **100 / 100 / 100** |
+| Mutation score — `rng.ts` | **95.12%**, 1 survivor (verified killed by hand) |
+| Mutation score — `canonical.ts` | **93.48%**, **0 behavioural survivors** |
+| Mutation score — `env.ts` | 94.44%, 0 behavioural survivors |
+| Mutation score — `webshop.ts` | 95.94% |
+| Mutation score — `taxonomy/classes.ts` | 87.01%, 0 behavioural survivors |
+| Real defects found by testing | **6** |
 
 ## Layers
-
 1. **Unit** — the cases we thought of.
-2. **Property / fuzz** — 5,500+ generated inputs against a seeded PRNG (never `Math.random`,
-   so a failure is reproducible), plus a hostile-string corpus: unicode, full-width digits,
-   `__proto__`, 10,000-character strings, emoji, script tags, currency symbols.
-3. **Full-corpus sweep** — every invariant over **all 12,251 instructions and all 1,000
-   products**, not a sample of 50. Real data breaks on record 9,412, not record 3.
-4. **Coverage** — to find untested lines.
-5. **Mutation** — to find untested *behaviour*, which coverage cannot see.
+2. **Property / fuzz** — 5,500+ generated inputs from a seeded PRNG (never `Math.random`, so a
+   failure is reproducible), plus a hostile-string corpus: unicode, full-width digits,
+   `__proto__`, 10,000-character strings, emoji, control characters, currency symbols.
+3. **Golden vectors** — exact pinned outputs. See below; this layer exists because of what
+   mutation testing found.
+4. **Full-corpus sweep** — every invariant over all 12,251 instructions and all 1,000 products.
+   Real data breaks on record 9,412, not record 3.
+5. **Coverage** — to find untested lines.
+6. **Mutation** — to find untested *behaviour*, which coverage cannot see.
 
-## The defect property testing found
+## Defects found
 
-`parsePriceMinor("$999999999999999999999.99")` returned `1e+23` — past `MAX_SAFE_INTEGER`.
-Beyond that boundary integer arithmetic silently loses precision, so a price comparison could
-return the wrong answer **with no error raised**. In a money path that is the worst failure
-shape: wrong and quiet.
-
-Fixed by refusing rather than returning an unsafe integer. An unparseable price is visible; a
+**1. Money precision.** `parsePriceMinor("$999999999999999999999.99")` returned `1e+23`, past
+`MAX_SAFE_INTEGER`, where integer arithmetic silently loses precision. A price comparison could
+have returned the wrong answer with no error. Now refused — an unparseable price is visible, a
 wrong price is not.
 
-The regression test also records a fact we cannot fix: `$90071992547409.90` and
-`$90071992547409.91` both round to the same integer. That is IEEE-754, not a bug — noted so
-nobody later assumes minor-unit arithmetic is exact at any magnitude.
+**2. Invalid JSON from sparse arrays.** `Array.prototype.map` SKIPS holes, so `[1,,3]`
+canonicalised to `"[1,,3]"` — not valid JSON. Any consumer parsing our audit artifact would have
+thrown. Fixed with an indexed loop plus a structural test that every shape we emit round-trips
+through `JSON.parse`.
 
-## Why mutation testing, and what it showed
+**3-5. Three corpus labelling bugs** — quantity deviations from unstated quantities (62% of
+cases), filler lines that were themselves unlabelled `UNREQUESTED_ADDITION`s inside "conforming"
+cases, and duplicate products in one cart. Found by validating the corpus against our own
+taxonomy *before* building a checker against it. See the commit for details.
 
-**100% coverage, and 29 behavioural mutations still survived.** Coverage proves a line *ran*.
-It does not prove a bug in that line would be *caught*.
+**6. Two pieces of dead code**, both surfaced by mutants that no test could kill:
+- `Object.is(n, -0) ? '0' : String(n)` — `String(-0)` is already `"0"`. The guard did nothing.
+- A hand-written key comparator with an equal-branch that `Object.keys` can never reach.
+  Replaced by the default sort, which is *already* UTF-16 code-unit order and, unlike
+  `localeCompare`, does not vary by ICU build.
 
-The most alarming survivor: in `byTopCategory`, mutating `m.set(p.topCategory, [p])` to
-`m.set(p.topCategory, [])` survived — the code would have **silently dropped the first product
-of every category** and the entire suite would still have passed green.
+## ★ What mutation testing taught us that coverage could not
 
-| Round | Mutation score | Behavioural survivors |
-|---|---|---|
-| Initial | 76.54% | 29 |
-| After targeted kill tests | 93.52% | 5 |
-| After second round | **94.14%** | **3** |
+**`rng.ts` had 100% coverage and a 22.92% mutation score.**
 
-## The three remaining survivors — investigated, not excused
+The tests asked *"is this a valid PRNG?"* — same seed reproduces, bounds respected, shuffle
+preserves the multiset. Every one of those remains true after the arithmetic is changed. So
+almost any mutation produced a different-but-still-valid generator that the suite accepted.
 
-**1. `webshop.ts:250` — `idx <= 0` → `idx < 0`. Proven EQUIVALENT MUTANT.**
-Verified by running both variants over the input space: identical output on every case. The two
-differ only at `idx === 0` (`":blue"`), and the very next line — `if (dimension === '' || value
-=== '')` — already returns null there. Equivalent mutants are unkillable by definition; the
-guard is redundant but harmless, and removing it *is* killable (tested).
+That is not cosmetic. Our entire reproducibility claim is *"regenerate the corpus byte-for-byte
+from a seed"*. If the RNG drifts, every published corpus hash changes and results stop being
+comparable — **silently, with a green suite.**
 
-**2 and 3. `webshop.ts:111` and `webshop.ts:135` — Stryker false positives.**
-Both were applied to the source **by hand**, and both cause **6 test failures**. They are killed
-by this suite. Stryker's vitest runner reports them as survivors under both
-`coverageAnalysis: perTest` and `off`.
+The fix was **golden vectors**: pin the exact output sequence, the exact shuffle permutation, the
+exact derived fork seeds, the exact canonical string and digest. `rng.ts` went 22.92% → **95.12%**.
 
-⇒ The true behavioural mutation score is higher than 94.14%. **Every killable behavioural
-mutant in our logic is dead.**
+Golden vectors paid for themselves immediately: when the dead code above was removed, the pinned
+hash was unchanged, which *proved* the refactor altered no output.
 
-The remaining reported survivors beyond these three are `StringLiteral` mutations inside the
-taxonomy's documentation prose (`holds`, `example`, `isNot`). Those are tested for substance —
-length and enum-membership — but a prose edit that preserves length is not behaviourally
-detectable, and pretending otherwise would be theatre.
+One subtlety they also caught: a shuffle loop bound of `i >= 0` instead of `i > 0` produces the
+**same array** (the last swap is an element with itself) but consumes one extra draw, shifting
+every later value. Only asserting the post-shuffle stream state catches it.
+
+## Protocol: every surviving mutant is investigated, never excused
+
+"Probably equivalent" is not a finding; running it is. Three outcomes so far:
+
+**Genuinely equivalent — unkillable by definition.** `parseOption`'s `idx <= 0` → `idx < 0`:
+verified by running both variants across the input space, identical output everywhere, because
+the next line already catches `idx === 0`.
+
+**Stryker false positives.** `webshop.ts:111` and `:135` were applied to the source by hand and
+each caused **6 test failures**. They are killed by this suite. A third, `rng.ts:34`
+(`min > max` → `min >= max`), makes the test file fail at *collection* — `generateCorpus` runs in
+the describe body — and `perTest` cannot attribute a collection-time crash to any test, so it
+reports "Survived" when the file did not run at all.
+
+**Real gaps, found by disbelieving a passing test.** Removing `pick()`'s empty-array guard still
+threw `RangeError` — from `int(0, -1)` instead — so a test asserting only the error *type* passed
+for the wrong reason. Asserting the message pins the guard. Likewise `hashOfString`'s test only
+checked it *differed* from `hashOf`, which an empty function body satisfies, since
+`undefined !== string`.
+
+## Cost control
+Generator tests run against a small committed fixture (246 ASINs, 234 products, 12 categories,
+unused fields stripped: 9.6MB → 288KB), rebuilt deterministically by
+`scripts/build-fixture.ts`. A mutation run restarts the suite per mutant; on the full corpus it
+projected past **three hours**. Fixtures should be small. Whole-dataset invariants stay in
+`corpus-sweep.test.ts`, where they belong.
 
 ## Reproducing
-
 ```bash
-npm run check          # typecheck + 87 tests
-npm run data:verify    # corpus SHA-256 integrity
-npx vitest run --coverage --coverage.provider=v8 --coverage.include='src/**'
-npx stryker run        # ~2 minutes
+npm run check                      # typecheck + 164 tests
+npm run data:verify                # corpus SHA-256 integrity
+npm run coverage
+npx stryker run stryker-fast.json  # rng + canonical, ~2 min
+npx stryker run                    # everything, slow
 ```
 
 ## Standing rules
-- **Property tests use a seeded PRNG.** A fuzz failure that cannot be reproduced is a rumour.
-- **Sweeps run over the whole corpus**, and report rates rather than asserting perfection —
-  e.g. option parse rate is asserted `> 0.95` and printed, so a drop is visible rather than
-  silent.
-- **When a property test and the code disagree, fix the code** unless the test's expectation is
-  provably wrong. On Day 1 that happened once in each direction: the code was wrong about
-  `MAX_SAFE_INTEGER`; the test was wrong about where the boundary lay.
-- **Investigate every surviving mutant.** "Probably equivalent" is not a finding; running it is.
+- **Seeded PRNG only.** A fuzz failure that cannot be reproduced is a rumour.
+- **Sweeps cover the whole corpus** and report rates rather than asserting perfection, so a drop
+  is visible instead of silent.
+- **When a property test and the code disagree, fix the code** — unless the test's expectation is
+  provably wrong. Both have happened once each.
+- **Investigate every surviving mutant**, and record which of the three outcomes it was.
+- **Pin exact outputs for anything a published number depends on.**
