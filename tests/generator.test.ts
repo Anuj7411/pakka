@@ -13,12 +13,23 @@ import { Rng } from '../src/corpus/rng.js';
 import { DIVERGENCE_CLASSES } from '../src/taxonomy/classes.js';
 import { TIERS } from '../src/corpus/types.js';
 
-const DATA_DIR = join(process.cwd(), 'data');
-const hasData = existsSync(join(DATA_DIR, 'items_human_ins.json'));
-
-// Loaded ONCE. The pairing cache keys on array identity, so a per-describe
-// load would recompute 9,605 x 804 comparisons three times over.
-const DATA = hasData ? loadWebShop(DATA_DIR) : null;
+/**
+ * These tests run against a small committed FIXTURE, not the 9.6MB corpus.
+ *
+ * The fixture is a deterministic subset of the real data (246 target ASINs,
+ * 234 products, 12 categories, unused product fields stripped) built by
+ * scripts/build-fixture.ts. It preserves every property these tests rely on:
+ * multiple categories with enough products for fillers and substitution pools,
+ * and instructions carrying both stated attributes and options.
+ *
+ * Why: the full corpus made each test process spend seconds parsing JSON, and
+ * a mutation run - which restarts the suite per mutant - was projected at over
+ * three hours. Fixtures should be small. The full corpus is still exercised by
+ * corpus-sweep.test.ts, which is where whole-dataset invariants belong.
+ */
+const FIXTURE_DIR = join(process.cwd(), 'tests', 'fixtures');
+const hasData = existsSync(join(FIXTURE_DIR, 'items_human_ins.json'));
+const DATA = hasData ? loadWebShop(FIXTURE_DIR) : null;
 
 describe('rng: determinism', () => {
   it('same seed yields the same sequence', () => {
@@ -272,7 +283,7 @@ describe.skipIf(!hasData)('generator: pairing', () => {
 
   it('only pairs instructions the catalogue can actually answer', () => {
     const pairs = pairInstructions(richInstructions(data), usableProducts(data));
-    expect(pairs.length).toBeGreaterThan(500);
+    expect(pairs.length).toBeGreaterThan(100);
     for (const p of pairs) {
       expect(p.score).toBeGreaterThanOrEqual(MIN_PAIR_SIMILARITY);
       expect(similarity(p.product.name, p.instruction.text)).toBeCloseTo(p.score, 10);
@@ -281,7 +292,7 @@ describe.skipIf(!hasData)('generator: pairing', () => {
 
   it('is deterministic and order-stable', () => {
     const products = usableProducts(data);
-    const ins = richInstructions(data).slice(0, 400);
+    const ins = richInstructions(data);
     const a = pairInstructions(ins, products);
     const b = pairInstructions([...ins].reverse(), products);
     expect(a.map((p) => p.instruction.targetAsin)).toEqual(b.map((p) => p.instruction.targetAsin));
@@ -289,7 +300,7 @@ describe.skipIf(!hasData)('generator: pairing', () => {
 
   it('a higher threshold yields a subset', () => {
     const products = usableProducts(data);
-    const ins = richInstructions(data).slice(0, 800);
+    const ins = richInstructions(data);
     const loose = new Set(pairInstructions(ins, products, 0.15).map((p) => p.instruction.targetAsin));
     const tight = pairInstructions(ins, products, 0.3);
     for (const p of tight) expect(loose.has(p.instruction.targetAsin)).toBe(true);
