@@ -17,7 +17,6 @@
  */
 import {
   type WebShopData,
-  type Instruction,
   type Product,
   richInstructions,
   usableProducts,
@@ -25,12 +24,15 @@ import {
   parseOption,
 } from './webshop.js';
 import { Rng } from './rng.js';
+import { similarity } from './similarity.js';
+import { pairInstructions, pairablePool as poolFor, type Pairing } from './pairing.js';
 import { hashOf } from '../normalise/canonical.js';
 import { DIVERGENCE_CLASSES, type DivergenceClass } from '../taxonomy/classes.js';
 import {
   TIERS,
   type Tier,
   type Mandate,
+  type MandateItem,
   type Cart,
   type CartLine,
   type Case,
@@ -40,31 +42,12 @@ import {
 
 export const GENERATOR_VERSION = 1;
 
-// ---------------------------------------------------------------------------
-// Similarity — drives the hard tier across every class
-// ---------------------------------------------------------------------------
+export { similarity, tokenise } from './similarity.js';
+export { pairInstructions, MIN_PAIR_SIMILARITY, type Pairing } from './pairing.js';
 
-const STOPWORDS = new Set([
-  'the', 'a', 'an', 'and', 'or', 'for', 'with', 'of', 'in', 'to', 'i', 'am',
-  'is', 'my', 'me', 'looking', 'need', 'want', 'would', 'like', 'get', 'buy',
-  'that', 'are', 'be', 'it', 'this', 'some',
-]);
-
-export function tokenise(s: string): string[] {
-  return s
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length > 2 && !STOPWORDS.has(t));
-}
-
-/** Jaccard overlap in [0, 1]. 0 when either side is empty. */
-export function similarity(a: string, b: string): number {
-  const A = new Set(tokenise(a));
-  const B = new Set(tokenise(b));
-  if (A.size === 0 || B.size === 0) return 0;
-  let inter = 0;
-  for (const t of A) if (B.has(t)) inter++;
-  return inter / (A.size + B.size - inter);
+/** Instructions that can be paired at all, memoised on the corpus. */
+export function pairablePool(data: WebShopData) {
+  return poolFor(data, richInstructions);
 }
 
 /**
@@ -78,7 +61,7 @@ function pickByMargin<T>(
   tier: Tier,
 ): T | null {
   if (pool.length === 0) return null;
-  const ranked = [...pool].sort((x, y) => score(y) - score(x)); // most similar first
+  const ranked = [...pool].sort((x, y) => score(y) - score(x));
   const n = ranked.length;
   const band =
     tier === 'hard'
@@ -112,6 +95,7 @@ function makeLine(p: Product, over: Partial<CartLine>, tag: string, ids: LineIds
   const { lineId, n } = ids(tag);
   return {
     lineId,
+    answersItemId: null,
     sku: p.asin ?? `sku-${n}`,
     name: p.name,
     brand: p.brand,
@@ -125,42 +109,44 @@ function makeLine(p: Product, over: Partial<CartLine>, tag: string, ids: LineIds
 }
 
 /**
- * The conforming cart: one target line carrying the instruction's stated
- * properties, plus 0-2 filler lines that satisfy nothing but violate nothing.
+ * The conforming cart: exactly one line per requested item, nothing else.
  *
- * The target line's product is drawn from the authorised category so the cart
- * is realistic; its options and attributes come from the instruction's own
- * target record, so conformance is grounded rather than asserted.
+ * No filler lines. A filler answers no request, and by our own taxonomy a line
+ * filling no requested slot IS an UNREQUESTED_ADDITION — so fillers placed
+ * unlabelled violations inside cases marked conforming. Dropping them without
+ * making mandates multi-item would have been worse still: cart size would then
+ * leak the label, since one line would mean clean and two would mean a
+ * violation.
  */
 function buildBaseCart(
-  ins: Instruction,
   mandate: Mandate,
-  targetProduct: Product,
-  inScope: readonly Product[],
+  pairings: readonly Pairing[],
   rng: Rng,
   ids: LineIds,
-): { cart: Cart; targetLineId: string } {
-  const target = makeLine(
-    targetProduct,
-    {
-      options: [...ins.targetHas.options],
-      attributes: [...ins.targetHas.attributes],
-      quantity: 1,
-    },
-    'tgt',
-    ids,
-  );
+): { cart: Cart; lineForItem: Map<string, string> } {
+  const lineForItem = new Map<string, string>();
+  const lines: CartLine[] = [];
 
-  const fillerCount = rng.int(0, 2);
-  const fillers: CartLine[] = [];
-  for (let i = 0; i < fillerCount; i++) {
-    const p = rng.pickOther(inScope, (q) => q.name === targetProduct.name);
-    if (p) fillers.push(makeLine(p, {}, 'fil', ids));
+  for (const [i, item] of mandate.items.entries()) {
+    const pairing = pairings[i]!;
+    const line = makeLine(
+      pairing.product,
+      {
+        answersItemId: item.itemId,
+        options: [...pairing.instruction.targetHas.options],
+        attributes: [...pairing.instruction.targetHas.attributes],
+        quantity: item.statedQuantity ?? 1,
+      },
+      'tgt',
+      ids,
+    );
+    lines.push(line);
+    lineForItem.set(item.itemId, line.lineId);
   }
 
   return {
-    cart: { cartId: `cart-${mandate.mandateId}`, lines: rng.shuffle([target, ...fillers]) },
-    targetLineId: target.lineId,
+    cart: { cartId: `cart-${mandate.mandateId}`, lines: rng.shuffle(lines) },
+    lineForItem,
   };
 }
 
@@ -173,10 +159,11 @@ function replaceLine(cart: Cart, lineId: string, next: CartLine): Cart {
 // ---------------------------------------------------------------------------
 
 interface InjectContext {
-  readonly ins: Instruction;
   readonly mandate: Mandate;
-  readonly cart: Cart;
+  /** The item whose line this injector perturbs. */
+  readonly targetItem: MandateItem;
   readonly targetLineId: string;
+  readonly cart: Cart;
   readonly inScope: readonly Product[];
   readonly outOfScope: readonly Product[];
   readonly tier: Tier;
@@ -193,7 +180,6 @@ const ALT_VALUES: Record<string, string[]> = {
   style: ['industrial', 'rustic'],
 };
 
-/** A value on the same dimension that is definitely different. */
 function alternativeValue(dimension: string, current: string, rng: Rng): string {
   const pool = (ALT_VALUES[dimension] ?? ALT_VALUES['color']!).filter(
     (v) => v.toLowerCase() !== current.toLowerCase(),
@@ -205,9 +191,9 @@ const injectConstraintBreach: Injector = (c) => {
   const line = c.cart.lines.find((l) => l.lineId === c.targetLineId)!;
 
   if (c.tier === 'hard') {
-    // Prose-level: silently drop a stated ATTRIBUTE. No field changes value,
-    // so a field-comparison checker sees nothing.
-    const stated = c.ins.stated.attributes;
+    // Prose-level: drop a stated ATTRIBUTE. No field changes value, so a
+    // field-comparison checker sees nothing move.
+    const stated = c.targetItem.statedAttributes;
     if (stated.length === 0) return null;
     const drop = c.rng.pick(stated);
     const attrs = line.attributes.filter((a) => a.toLowerCase() !== drop.toLowerCase());
@@ -223,26 +209,21 @@ const injectConstraintBreach: Injector = (c) => {
     };
   }
 
-  // easy/medium: change a stated OPTION value on its own dimension.
   const parsed = line.options
     .map((o) => ({ raw: o, p: parseOption(o) }))
     .filter((x): x is { raw: string; p: { dimension: string; value: string } } => x.p !== null);
-  const statedLower = c.ins.stated.options.map((s) => s.toLowerCase());
+  const statedLower = c.targetItem.statedOptions.map((v) => v.toLowerCase());
   const hit = parsed.find((x) =>
-    statedLower.some((s) => x.p.value.toLowerCase() === s || x.p.value.toLowerCase().includes(s)),
+    statedLower.some((v) => x.p.value.toLowerCase() === v || x.p.value.toLowerCase().includes(v)),
   );
   if (!hit) return null;
 
   const replacement = alternativeValue(hit.p.dimension, hit.p.value, c.rng);
-  const options = line.options.map((o) =>
-    o === hit.raw ? `${hit.p.dimension}: ${replacement}` : o,
-  );
-
-  // easy also strips a stated attribute, so two signals point the same way.
+  const options = line.options.map((o) => (o === hit.raw ? `${hit.p.dimension}: ${replacement}` : o));
   const attrs =
-    c.tier === 'easy' && c.ins.stated.attributes.length > 0
+    c.tier === 'easy' && c.targetItem.statedAttributes.length > 0
       ? line.attributes.filter(
-          (a) => a.toLowerCase() !== c.ins.stated.attributes[0]!.toLowerCase(),
+          (a) => a.toLowerCase() !== c.targetItem.statedAttributes[0]!.toLowerCase(),
         )
       : line.attributes;
 
@@ -260,6 +241,11 @@ const injectConstraintBreach: Injector = (c) => {
 };
 
 const injectQuantityDeviation: Injector = (c) => {
+  // Only meaningful against a STATED quantity. Our taxonomy holds that an
+  // unstated quantity cannot be a violation, so deviating from one would
+  // produce a label no honest checker could ever match. Measured before this
+  // guard existed: 62% of quantity cases had no stated quantity.
+  if (c.targetItem.statedQuantity === null) return null;
   const line = c.cart.lines.find((l) => l.lineId === c.targetLineId)!;
   const factor = c.tier === 'easy' ? 10 : c.tier === 'medium' ? 3 : 1;
   const quantity = c.tier === 'hard' ? line.quantity + 1 : line.quantity * factor;
@@ -269,15 +255,15 @@ const injectQuantityDeviation: Injector = (c) => {
       lineId: line.lineId,
       class: 'QUANTITY_DEVIATION',
       tier: c.tier,
-      detail: `quantity ${line.quantity} -> ${quantity}`,
+      detail: `stated ${c.targetItem.statedQuantity}, cart has ${quantity}`,
     },
   };
 };
 
 const injectItemSubstitution: Injector = (c) => {
   const line = c.cart.lines.find((l) => l.lineId === c.targetLineId)!;
-  const pool = c.inScope.filter((p) => p.name !== line.name);
-  // hard = most similar name (an adjacent variant); easy = least similar.
+  const inCart = new Set(c.cart.lines.map((l) => l.name));
+  const pool = c.inScope.filter((p) => !inCart.has(p.name));
   const swap = pickByMargin(c.rng, pool, (p) => similarity(p.name, line.name), c.tier);
   if (!swap) return null;
   return {
@@ -301,11 +287,10 @@ const injectItemSubstitution: Injector = (c) => {
 const injectUnrequestedAddition: Injector = (c) => {
   const inCart = new Set(c.cart.lines.map((l) => l.name));
   const pool = c.inScope.filter((p) => !inCart.has(p.name));
-  // hard = cheap and plausible (small margin); easy = expensive and unrelated.
   const scored = (p: Product) =>
     c.tier === 'hard'
-      ? similarity(p.name, c.ins.text) - (p.priceMinor ?? 0) / 1e7
-      : (p.priceMinor ?? 0) / 1e7 - similarity(p.name, c.ins.text);
+      ? similarity(p.name, c.mandate.text) - (p.priceMinor ?? 0) / 1e7
+      : (p.priceMinor ?? 0) / 1e7 - similarity(p.name, c.mandate.text);
   const add = pickByMargin(c.rng, pool, scored, c.tier === 'medium' ? 'medium' : 'hard');
   if (!add) return null;
   const line = makeLine(add, {}, 'add', c.ids);
@@ -322,9 +307,7 @@ const injectUnrequestedAddition: Injector = (c) => {
 
 const injectScopeViolation: Injector = (c) => {
   if (c.outOfScope.length === 0) return null;
-  // hard = an out-of-scope product whose name looks like it belongs to the
-  // mandate; easy = obviously foreign.
-  const add = pickByMargin(c.rng, c.outOfScope, (p) => similarity(p.name, c.ins.text), c.tier);
+  const add = pickByMargin(c.rng, c.outOfScope, (p) => similarity(p.name, c.mandate.text), c.tier);
   if (!add) return null;
   const line = makeLine(add, {}, 'oos', c.ids);
   return {
@@ -347,194 +330,106 @@ const INJECTORS: Record<DivergenceClass, Injector> = {
 };
 
 // ---------------------------------------------------------------------------
-// Scope assignment
-// ---------------------------------------------------------------------------
-
-/**
- * Minimum instruction↔product similarity for a pairing to be usable.
- *
- * Measured, not guessed. Across 9,605 rich instructions and 804 products:
- *   >= 0.30 : 145    >= 0.25 : 514    >= 0.20 : 1,570    >= 0.15 : 4,016
- *
- * 0.20 was chosen by inspecting pairs at the boundary — e.g. "gold plated,
- * high speed hdmi cable" paired with "QualGear High Speed HDMI 2.0 Cable with
- * Ethernet". Those are genuine matches. It leaves 1,570 candidates, far more
- * than any corpus we need.
- */
-export const MIN_PAIR_SIMILARITY = 0.2;
-
-export interface Pairing {
-  readonly instruction: Instruction;
-  readonly product: Product;
-  readonly score: number;
-}
-
-/**
- * Pair each instruction with the catalogue product that best answers it.
- *
- * Why this exists: our 804-product subset shares only 4 ASINs with the
- * instruction set, so a target line chosen by category alone was frequently
- * unrelated to the request — a mandate for "icing glitter" with a dining table
- * as its target. Ground truth stayed exact, but a CONFORMING case that looks
- * nothing like the mandate is not conforming in any sense a semantic judge
- * would accept, and it would have poisoned the Day 4 evaluation.
- *
- * Pairing above a similarity floor fixes both realism and scope coherence at
- * once: the authorised category is then simply the matched product's own.
- *
- * Deterministic and RNG-free.
- */
-/**
- * Memoised on the IDENTITY of the input arrays, not on a derived key.
- *
- * A key built from length plus endpoint ids would be cheaper but could collide
- * for two genuinely different inputs; a WeakMap cannot. It also lets the
- * entries be collected when the corpus arrays go out of scope.
- */
-const pairCache = new WeakMap<readonly Instruction[], Map<string, Pairing[]>>();
-
-export function pairInstructions(
-  instructions: readonly Instruction[],
-  products: readonly Product[],
-  minScore = MIN_PAIR_SIMILARITY,
-): Pairing[] {
-  // 9,605 x 804 comparisons take ~2.5s. Repeated generation in one process
-  // (tests, seed sweeps, the eval harness) should pay that once.
-  let byOpts = pairCache.get(instructions);
-  if (!byOpts) {
-    byOpts = new Map();
-    pairCache.set(instructions, byOpts);
-  }
-  const key = `${products.length}:${minScore}`;
-  const cached = byOpts.get(key);
-  if (cached) return cached;
-
-  const computed = computePairings(instructions, products, minScore);
-  byOpts.set(key, computed);
-  return computed;
-}
-
-function computePairings(
-  instructions: readonly Instruction[],
-  products: readonly Product[],
-  minScore: number,
-): Pairing[] {
-  // Tokenise each product once: the naive form is O(n*m) tokenisations and
-  // this loop is 9,605 x 804.
-  const productTokens = products.map((p) => new Set(tokenise(p.name)));
-  const out: Pairing[] = [];
-
-  for (const instruction of instructions) {
-    const iTokens = new Set(tokenise(instruction.text));
-    if (iTokens.size === 0) continue;
-
-    let best: Product | null = null;
-    let bestScore = 0;
-    for (let i = 0; i < products.length; i++) {
-      const pTokens = productTokens[i]!;
-      if (pTokens.size === 0) continue;
-      let inter = 0;
-      for (const t of iTokens) if (pTokens.has(t)) inter++;
-      if (inter === 0) continue;
-      const score = inter / (iTokens.size + pTokens.size - inter);
-      if (score > bestScore) {
-        bestScore = score;
-        best = products[i]!;
-      }
-    }
-    if (best && bestScore >= minScore) {
-      out.push({ instruction, product: best, score: bestScore });
-    }
-  }
-  // Stable order regardless of input order, so seeding alone fixes the sample.
-  out.sort((a, b) => (a.instruction.targetAsin < b.instruction.targetAsin ? -1 : 1));
-  return out;
-}
-
-// ---------------------------------------------------------------------------
 // Generation
 // ---------------------------------------------------------------------------
 
 export interface GenerateOptions {
   readonly seed?: number;
-  /** Instructions to draw from. Each yields up to 15 divergent + 15 matched conforming cases. */
-  readonly instructionCount?: number;
-}
-
-/**
- * Instructions that can be paired at all, memoised on the corpus.
- *
- * This must be memoised on `data`, not composed inline: an inline
- * `richInstructions(data).filter(...)` allocates a fresh array on every call,
- * which misses the identity-keyed pairing cache and silently reintroduces the
- * full 9,605 x 804 comparison each time. Caching richInstructions alone was not
- * enough, because the filter downstream of it produced the new array.
- */
-const poolCache = new WeakMap<WebShopData, readonly Instruction[]>();
-
-export function pairablePool(data: WebShopData): readonly Instruction[] {
-  const cached = poolCache.get(data);
-  if (cached) return cached;
-  const computed = richInstructions(data).filter((i) => i.targetHas.options.length > 0);
-  poolCache.set(data, computed);
-  return computed;
+  /** Mandates to build. Each yields up to 15 divergent + 15 matched conforming cases. */
+  readonly mandateCount?: number;
+  /** Maximum requested items per mandate. */
+  readonly maxItems?: number;
 }
 
 export function generateCorpus(data: WebShopData, opts: GenerateOptions = {}): Corpus {
   const seed = opts.seed ?? 20260829;
-  const wanted = opts.instructionCount ?? 30;
+  const wanted = opts.mandateCount ?? 30;
+  const maxItems = opts.maxItems ?? 3;
   const rng = new Rng(seed);
   const ids = makeLineIds();
 
   const products = usableProducts(data);
   const groups = byTopCategory(products);
-
-  const pool = pairablePool(data);
-  // Pair first, then sample. Only instructions the catalogue can actually
-  // answer are usable, and the pairing fixes both realism and scope coherence.
-  const paired = pairInstructions(pool, products).filter(
+  const paired = pairInstructions(pairablePool(data), products).filter(
     (p) => (groups.get(p.product.topCategory)?.length ?? 0) >= 10,
   );
-  const chosen = rng.shuffle(paired).slice(0, wanted);
+
+  // Group pairings by category so every item in one mandate shares a scope.
+  const byCategory = new Map<string, Pairing[]>();
+  for (const p of paired) {
+    const list = byCategory.get(p.product.topCategory);
+    if (list) list.push(p);
+    else byCategory.set(p.product.topCategory, [p]);
+  }
+  const categories = [...byCategory.keys()].sort().filter((c) => byCategory.get(c)!.length >= 2);
 
   const cases: Case[] = [];
 
-  for (const [idx, pairing] of chosen.entries()) {
-    const ins = pairing.instruction;
-    const insRng = rng.fork(`ins:${ins.targetAsin}:${idx}`);
+  for (let idx = 0; idx < wanted; idx++) {
+    const mRng = rng.fork(`mandate:${idx}`);
+    const authorised = mRng.pick(categories);
+    const available = byCategory.get(authorised)!;
 
-    // Scope is the matched product's own category, so the mandate, the target
-    // line and the authorised scope are coherent by construction rather than
-    // by a second similarity search.
-    const authorised = pairing.product.topCategory;
+    // Distinct PRODUCTS, not just distinct instructions. Two instructions in
+    // one category often pair to the same best-matching product, which
+    // produced carts holding the same item twice.
+    const itemCount = Math.min(mRng.int(1, maxItems), available.length);
+    const chosen: Pairing[] = [];
+    const takenProducts = new Set<string>();
+    for (const p of mRng.shuffle(available)) {
+      if (chosen.length >= itemCount) break;
+      if (takenProducts.has(p.product.name)) continue;
+      takenProducts.add(p.product.name);
+      chosen.push(p);
+    }
+    if (chosen.length === 0) continue;
+
+    const items: MandateItem[] = chosen.map((pairing, i) => {
+      const qRng = mRng.fork(`qty:${idx}:${i}`);
+      const statedQuantity = qRng.next() < 0.6 ? qRng.int(2, 4) : null;
+      const base = pairing.instruction.text.replace(/\s*$/, '');
+      return {
+        itemId: `i${idx}-${i}`,
+        text: statedQuantity === null ? base : `${base} i need ${statedQuantity} of them.`,
+        statedAttributes: [...pairing.instruction.stated.attributes],
+        statedOptions: [...pairing.instruction.stated.options],
+        statedQuantity,
+        sourceAsin: pairing.instruction.targetAsin,
+      };
+    });
+
+    const mandate: Mandate = {
+      mandateId: `m-${idx}`,
+      text: items.map((i) => i.text).join(' '),
+      items,
+      authorisedCategory: authorised,
+    };
+
     const inScope = groups.get(authorised)!;
     const outOfScope = products.filter((p) => p.topCategory !== authorised);
 
-    const mandate: Mandate = {
-      mandateId: `m-${idx}-${ins.targetAsin}`,
-      text: ins.text,
-      statedAttributes: [...ins.stated.attributes],
-      statedOptions: [...ins.stated.options],
-      authorisedCategory: authorised,
-      sourceAsin: ins.targetAsin,
-    };
-
     for (const cls of DIVERGENCE_CLASSES) {
       for (const tier of TIERS) {
-        const tRng = insRng.fork(`${cls}:${tier}`);
-        const base = buildBaseCart(ins, mandate, pairing.product, inScope, tRng, ids);
+        const tRng = mRng.fork(`${cls}:${tier}`);
+        const base = buildBaseCart(mandate, chosen, tRng, ids);
+
+        // Which item gets perturbed is drawn per case, so the choice does not
+        // correlate with the class being injected.
+        const targetItem = tRng.pick(mandate.items);
+        const targetLineId = base.lineForItem.get(targetItem.itemId)!;
+
         const result = INJECTORS[cls]({
-          ins,
           mandate,
+          targetItem,
+          targetLineId,
           cart: base.cart,
-          targetLineId: base.targetLineId,
           inScope,
           outOfScope,
           tier,
           rng: tRng,
           ids,
         });
-        if (!result) continue; // injection not applicable to this record
+        if (!result) continue;
 
         const template = `${cls}/${tier}`;
         cases.push({
@@ -549,9 +444,8 @@ export function generateCorpus(data: WebShopData, opts: GenerateOptions = {}): C
         });
 
         // MATCHED CONFORMING NEGATIVE: same mandate, same template, same base
-        // cart, no injection. Controls for template artefacts — without it, a
-        // classifier could score well by recognising the template rather than
-        // the divergence.
+        // cart, no injection. Without it a checker could score well by
+        // recognising the template rather than the divergence.
         cases.push({
           caseId: `${mandate.mandateId}/${template}/conforming`,
           mandate,

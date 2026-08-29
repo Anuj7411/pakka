@@ -22,29 +22,65 @@ import type { DivergenceClass } from '../taxonomy/classes.js';
 export const TIERS = ['easy', 'medium', 'hard'] as const;
 export type Tier = (typeof TIERS)[number];
 
-/** What the human asked for, and the bounds they stated. */
+/** One thing the human asked for, with the bounds they stated about it. */
+export interface MandateItem {
+  readonly itemId: string;
+  /** Verbatim human text for this request. */
+  readonly text: string;
+  readonly statedAttributes: readonly string[];
+  readonly statedOptions: readonly string[];
+  /**
+   * Order quantity, or null when unstated.
+   *
+   * SYNTHESIZED. WebShop states pack SIZES as product options ("12 count
+   * (pack of 2)" describes the SKU) but essentially never an order quantity.
+   * Our taxonomy holds that an unstated quantity cannot be a violation, so a
+   * QUANTITY_DEVIATION case built on one would carry a label no honest checker
+   * could match. Measured before fixing: 62% of quantity cases had none.
+   * When synthesized it is appended to `text`, so what a judge reads and what
+   * a checker enforces are the same statement.
+   */
+  readonly statedQuantity: number | null;
+  readonly sourceAsin: string;
+}
+
+/**
+ * What the human asked for.
+ *
+ * Mandates are MULTI-ITEM (1-3 requests). This is not decoration:
+ *
+ *  - A single-item mandate whose conforming cart holds filler lines is
+ *    mislabelled, because by our own taxonomy a line filling no requested slot
+ *    IS an UNREQUESTED_ADDITION. The earlier corpus had exactly that bug.
+ *  - Dropping fillers instead would make cart SIZE leak the label: one line
+ *    means clean, two means a violation. A checker could score well by
+ *    counting lines.
+ *
+ * With multi-item mandates every conforming line answers a request, cart size
+ * varies independently of whether a violation exists, and real delegated
+ * mandates ("fill my cart") look like this anyway.
+ */
 export interface Mandate {
   readonly mandateId: string;
-  /** Verbatim human text from WebShop. */
+  /** All requests, joined. What a judge reads. */
   readonly text: string;
-  /** Attributes the human stated, e.g. "wireless bluetooth". */
-  readonly statedAttributes: readonly string[];
-  /** Option values the human stated, e.g. "blue". */
-  readonly statedOptions: readonly string[];
+  readonly items: readonly MandateItem[];
   /**
    * Category the agent is authorised to buy within.
    *
-   * SYNTHESIZED — WebShop instructions do not name a merchant or scope. We
-   * derive it from the target product's top-level category so SCOPE_VIOLATION
-   * is expressible. Recorded here so it is never mistaken for human-authored.
+   * SYNTHESIZED — WebShop instructions name no merchant or scope. Derived from
+   * the matched products' category so SCOPE_VIOLATION is expressible.
    */
   readonly authorisedCategory: string;
-  /** Provenance back to the source record. */
-  readonly sourceAsin: string;
 }
 
 export interface CartLine {
   readonly lineId: string;
+  /**
+   * The mandate item this line answers, or null when it answers none.
+   * Ground truth only — never given to a checker or a judge.
+   */
+  readonly answersItemId: string | null;
   readonly sku: string;
   readonly name: string;
   readonly brand: string | null;

@@ -126,18 +126,18 @@ describe('similarity', () => {
 
 describe.skipIf(!hasData)('generator: corpus', () => {
   const data = DATA!;
-  const corpus = generateCorpus(data, { seed: 20260829, instructionCount: 30 });
+  const corpus = generateCorpus(data, { seed: 20260829, mandateCount: 30 });
   const divergent = corpus.cases.filter((c) => !c.conforming);
   const conforming = corpus.cases.filter((c) => c.conforming);
 
   it('is reproducible from the seed', () => {
-    const again = generateCorpus(data, { seed: 20260829, instructionCount: 30 });
+    const again = generateCorpus(data, { seed: 20260829, mandateCount: 30 });
     expect(again.generatedWith.hash).toBe(corpus.generatedWith.hash);
     expect(again.cases.length).toBe(corpus.cases.length);
   });
 
   it('changes with the seed', () => {
-    const other = generateCorpus(data, { seed: 99, instructionCount: 30 });
+    const other = generateCorpus(data, { seed: 99, mandateCount: 30 });
     expect(other.generatedWith.hash).not.toBe(corpus.generatedWith.hash);
   });
 
@@ -228,22 +228,44 @@ describe.skipIf(!hasData)('generator: corpus', () => {
 
 describe.skipIf(!hasData)('generator: difficulty is graded, not merely labelled', () => {
   const data = DATA!;
-  const corpus = generateCorpus(data, { seed: 20260829, instructionCount: 30 });
+  const corpus = generateCorpus(data, { seed: 20260829, mandateCount: 30 });
   const divergent = corpus.cases.filter((c) => !c.conforming);
 
   it('quantity margins are ordered easy > medium > hard', () => {
-    const factorFor = (tier: string): number[] =>
+    // Margin is measured RELATIVE to the stated quantity, not as an absolute
+    // count: the base is now whatever the mandate stated (2-4), so an absolute
+    // assertion would only be testing the sampler.
+    const ratios = (tier: string): number[] =>
       divergent
         .filter((c) => c.template === `QUANTITY_DEVIATION/${tier}`)
-        .map((c) => c.cart.lines.find((l) => l.lineId === c.expected[0]!.lineId)!.quantity);
-    const easy = factorFor('easy');
-    const medium = factorFor('medium');
-    const hard = factorFor('hard');
+        .map((c) => {
+          const line = c.cart.lines.find((l) => l.lineId === c.expected[0]!.lineId)!;
+          const item = c.mandate.items.find((i) => i.itemId === line.answersItemId)!;
+          return line.quantity / item.statedQuantity!;
+        });
     const mean = (a: number[]) => a.reduce((s, v) => s + v, 0) / a.length;
-    // x10, x3, +1 from a base quantity of 1.
-    expect(mean(easy)).toBeGreaterThan(mean(medium));
-    expect(mean(medium)).toBeGreaterThan(mean(hard));
-    expect(hard.every((q) => q === 2)).toBe(true);
+    expect(mean(ratios('easy'))).toBeGreaterThan(mean(ratios('medium')));
+    expect(mean(ratios('medium'))).toBeGreaterThan(mean(ratios('hard')));
+  });
+
+  it('every quantity case deviates from a STATED quantity', () => {
+    // Our taxonomy holds an unstated quantity cannot be a violation, so a case
+    // built on one would carry a label no honest checker could match.
+    for (const c of divergent.filter((x) => x.expected[0]!.class === 'QUANTITY_DEVIATION')) {
+      const line = c.cart.lines.find((l) => l.lineId === c.expected[0]!.lineId)!;
+      const item = c.mandate.items.find((i) => i.itemId === line.answersItemId)!;
+      expect(item.statedQuantity, `${c.caseId} deviates from an unstated quantity`).not.toBeNull();
+      expect(line.quantity).not.toBe(item.statedQuantity);
+      expect(c.mandate.text).toContain(`i need ${item.statedQuantity} of them`);
+    }
+  });
+
+  it('the hard tier deviates by exactly one unit', () => {
+    for (const c of divergent.filter((x) => x.template === 'QUANTITY_DEVIATION/hard')) {
+      const line = c.cart.lines.find((l) => l.lineId === c.expected[0]!.lineId)!;
+      const item = c.mandate.items.find((i) => i.itemId === line.answersItemId)!;
+      expect(line.quantity).toBe(item.statedQuantity! + 1);
+    }
   });
 
   it('substitution margins narrow as difficulty rises', () => {
