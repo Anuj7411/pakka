@@ -6,12 +6,12 @@
     "json",
     "progress"
   ],
-  "coverageAnalysis": "off",
+  "coverageAnalysis": "perTest",
   "mutate": [
     "src/**/*.ts",
     "!src/config/product.ts"
   ],
-  "timeoutMS": 20000,
+  "timeoutMS": 60000,
   "concurrency": 6,
   "thresholds": {
     "high": 90,

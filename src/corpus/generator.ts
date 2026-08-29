@@ -461,6 +461,25 @@ export interface GenerateOptions {
   readonly instructionCount?: number;
 }
 
+/**
+ * Instructions that can be paired at all, memoised on the corpus.
+ *
+ * This must be memoised on `data`, not composed inline: an inline
+ * `richInstructions(data).filter(...)` allocates a fresh array on every call,
+ * which misses the identity-keyed pairing cache and silently reintroduces the
+ * full 9,605 x 804 comparison each time. Caching richInstructions alone was not
+ * enough, because the filter downstream of it produced the new array.
+ */
+const poolCache = new WeakMap<WebShopData, readonly Instruction[]>();
+
+export function pairablePool(data: WebShopData): readonly Instruction[] {
+  const cached = poolCache.get(data);
+  if (cached) return cached;
+  const computed = richInstructions(data).filter((i) => i.targetHas.options.length > 0);
+  poolCache.set(data, computed);
+  return computed;
+}
+
 export function generateCorpus(data: WebShopData, opts: GenerateOptions = {}): Corpus {
   const seed = opts.seed ?? 20260829;
   const wanted = opts.instructionCount ?? 30;
@@ -470,7 +489,7 @@ export function generateCorpus(data: WebShopData, opts: GenerateOptions = {}): C
   const products = usableProducts(data);
   const groups = byTopCategory(products);
 
-  const pool = richInstructions(data).filter((i) => i.targetHas.options.length > 0);
+  const pool = pairablePool(data);
   // Pair first, then sample. Only instructions the catalogue can actually
   // answer are usable, and the pairing fixes both realism and scope coherence.
   const paired = pairInstructions(pool, products).filter(

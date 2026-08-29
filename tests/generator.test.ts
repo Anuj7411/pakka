@@ -16,6 +16,10 @@ import { TIERS } from '../src/corpus/types.js';
 const DATA_DIR = join(process.cwd(), 'data');
 const hasData = existsSync(join(DATA_DIR, 'items_human_ins.json'));
 
+// Loaded ONCE. The pairing cache keys on array identity, so a per-describe
+// load would recompute 9,605 x 804 comparisons three times over.
+const DATA = hasData ? loadWebShop(DATA_DIR) : null;
+
 describe('rng: determinism', () => {
   it('same seed yields the same sequence', () => {
     const a = new Rng(42);
@@ -110,7 +114,7 @@ describe('similarity', () => {
 });
 
 describe.skipIf(!hasData)('generator: corpus', () => {
-  const data = loadWebShop(DATA_DIR);
+  const data = DATA!;
   const corpus = generateCorpus(data, { seed: 20260829, instructionCount: 30 });
   const divergent = corpus.cases.filter((c) => !c.conforming);
   const conforming = corpus.cases.filter((c) => c.conforming);
@@ -212,7 +216,7 @@ describe.skipIf(!hasData)('generator: corpus', () => {
 });
 
 describe.skipIf(!hasData)('generator: difficulty is graded, not merely labelled', () => {
-  const data = loadWebShop(DATA_DIR);
+  const data = DATA!;
   const corpus = generateCorpus(data, { seed: 20260829, instructionCount: 30 });
   const divergent = corpus.cases.filter((c) => !c.conforming);
 
@@ -264,7 +268,7 @@ describe.skipIf(!hasData)('generator: difficulty is graded, not merely labelled'
 });
 
 describe.skipIf(!hasData)('generator: pairing', () => {
-  const data = loadWebShop(DATA_DIR);
+  const data = DATA!;
 
   it('only pairs instructions the catalogue can actually answer', () => {
     const pairs = pairInstructions(richInstructions(data), usableProducts(data));

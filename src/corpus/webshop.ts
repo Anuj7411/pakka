@@ -220,17 +220,32 @@ export function loadWebShop(dir: string = DEFAULT_DIR): WebShopData {
  * These are the only ones where a CONSTRAINT_BREACH can be injected against a
  * genuinely human-stated bound rather than one we made up. ~9,605 of 12,251.
  */
+const richCache = new WeakMap<WebShopData, readonly Instruction[]>();
+
 export function richInstructions(data: WebShopData): readonly Instruction[] {
-  return data.instructions.filter(
+  // Memoised on the corpus identity. Without this every caller allocates a
+  // fresh array, which defeats the downstream pairing cache keyed on array
+  // identity and makes repeated generation recompute 9,605 x 804 comparisons.
+  const cached = richCache.get(data);
+  if (cached) return cached;
+  const computed = data.instructions.filter(
     (i) => i.stated.attributes.length > 0 && i.stated.options.length > 0,
   );
+  richCache.set(data, computed);
+  return computed;
 }
 
 /** Products usable as cart lines: real price and a real category. */
+const usableCache = new WeakMap<WebShopData, readonly Product[]>();
+
 export function usableProducts(data: WebShopData): readonly Product[] {
-  return data.products.filter(
+  const cached = usableCache.get(data);
+  if (cached) return cached;
+  const computed = data.products.filter(
     (p) => p.priceMinor !== null && p.name.length > 0 && p.categoryPath.length > 0,
   );
+  usableCache.set(data, computed);
+  return computed;
 }
 
 /** Products grouped by top-level category — the SCOPE_VIOLATION donor pool. */
