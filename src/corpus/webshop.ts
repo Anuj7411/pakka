@@ -113,7 +113,14 @@ export function parsePriceMinor(raw: string | undefined): number | null {
   if (matches.length > 1) return null;
   const n = Number.parseFloat(matches[0]!);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n * 100);
+
+  const minor = Math.round(n * 100);
+  // Past MAX_SAFE_INTEGER, integer arithmetic silently loses precision — a
+  // price comparison could then return the wrong answer with no error. Refuse
+  // rather than carry an unsafe number into money logic.
+  // Found by property test, not by inspection.
+  if (!Number.isSafeInteger(minor)) return null;
+  return minor;
 }
 
 export function parseCategory(raw: string | undefined): readonly string[] {

@@ -14,10 +14,15 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run test",
     "data:fetch": "bash scripts/fetch-data.sh",
-    "data:verify": "node scripts/verify-data.mjs"
+    "data:verify": "node scripts/verify-data.mjs",
+    "coverage": "vitest run --coverage --coverage.provider=v8 --coverage.include='src/**'",
+    "mutation": "stryker run"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^8.7.1",
+    "@stryker-mutator/vitest-runner": "^8.7.1",
     "@types/node": "22.10.2",
+    "@vitest/coverage-v8": "^2.1.8",
     "typescript": "5.7.2",
     "vitest": "2.1.8"
   },

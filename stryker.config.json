@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "npm",
+  "testRunner": "vitest",
+  "reporters": [
+    "json",
+    "progress"
+  ],
+  "coverageAnalysis": "off",
+  "mutate": [
+    "src/**/*.ts",
+    "!src/config/product.ts"
+  ],
+  "timeoutMS": 20000,
+  "concurrency": 6,
+  "thresholds": {
+    "high": 90,
+    "low": 80,
+    "break": null
+  },
+  "jsonReporter": {
+    "fileName": "reports/mutation.json"
+  }
+}
