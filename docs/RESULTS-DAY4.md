@@ -1,5 +1,15 @@
 # Day 4 results — semantic layer. A7 answered.
 
+> **⚠️ SUPERSEDED IN PART, 2026-08-31.** Everything below was measured on corpus
+> `sha256:4f3acf4e74b8a…`, whose conforming labels were produced by lexical
+> pairing alone. That pairing was wrong (see "the 70% false-positive figure"),
+> and it has been replaced. **The ablation table describes a corpus that no
+> longer exists** — re-run results are in `RESULTS-DAY4-RERUN.md`.
+>
+> What survives unchanged: the calibration finding, which is label-independent,
+> and the architecture argument that follows from it. What does not: every rate
+> in the table.
+
 Model `gemini-3.1-flash-lite`, temperature 0, structured output. 160 cases from
 6 mandates, seed 20260829, corpus `sha256:4f3acf4e74b8a…`.
 **37 provider calls, 255 cache hits, 0 failures.** Reproduce with
@@ -125,15 +135,72 @@ The design was chosen before the number existed. The number says it was correct.
 
 1. **Verify conforming labels before quoting any FP rate.** The n=100 human
    validation moves up: it is now load-bearing, not a credibility garnish.
-2. **Raise or replace the pairing threshold.** A lexical floor cannot certify
-   satisfaction. Options: a higher threshold, model-assisted verification of
-   conforming pairs (disclosed), or restricting the FP measurement to a
-   verified subset.
-3. **Drop the confidence-based abstention band.** It cannot fire. Replace it or
-   remove it — do not leave a threshold in the code that never triggers and
-   implies calibration we do not have.
+   **Still outstanding.** The pairing fix below reduced the bad-label rate; it
+   did not remove it.
+2. ~~**Raise or replace the pairing threshold.**~~ **Done** — replaced, not
+   raised. See below.
+3. ~~**Drop the confidence-based abstention band.**~~ **Done** — removed, along
+   with the `abstention` finding source that nothing could then produce.
 4. Keep the ablation on constructed-divergence cases, where labels are exact by
    construction: those are the numbers that survive.
+
+## What was done about it, 2026-08-31
+
+### The pairing threshold was replaced, not raised
+
+Raising it cannot work. The bad pair scores *well* by construction — it shares
+every modifier the request states. The fix has to look at **which** token
+matched, not how many, so pairing now also requires the product to carry the
+request's **head noun**: the thing being asked for.
+
+Three attempts, and the first two failed in ways worth recording, because both
+looked correct against a hand-picked test set.
+
+| Attempt | Rule | Failed on |
+|---|---|---|
+| 1 | last content token | `"…permanent hair dye in espresso"` → *espresso* → matched Pilon Espresso Coffee |
+| 2 | strip opener, stop at clause boundary | reused `similarity.tokenise`, which **strips stopwords** — so "of", "for", "with", "that" were gone before any boundary could apply, and heads slid to the object of a trailing prepositional phrase: `"curtains FOR my living ROOM"` → *room* |
+| 3 | own tokeniser, boundaries, partitive "of", generic-head qualifiers | in use |
+
+Attempt 1 scored 9/9 on cases I chose myself. It scored 4/12 once the cases came
+from the corpus. **A hand-picked sample is not evidence** — it is the same error
+that produced the 70% figure in the first place, one level up.
+
+Also fixed en route: `stem()` stripped "es" wholesale, so "headphones" became
+"headphon" while "headphone" stayed "headphone" and the two stopped matching. It
+runs on both sides of a comparison, so symmetry is the only property that
+matters.
+
+**Validation protocol.** Random draws, with a fresh seed after every tuning
+round, since a seed I have tuned against is no longer evidence.
+
+| Sample | Correct |
+|---|---|
+| held-out draw, before generic-head rule | 13/20 |
+| held-out draw, current rule | **18/20** (1 marginal, 1 wrong) |
+
+Pairings: **1,570 → 705.** Instructions with no recognisable head, dropped
+rather than guessed: 8.1%. The remaining known failure is a compound noun whose
+second word is packaging — "hair **piece**" → Hair Removal Pads.
+
+**This does not make the conforming labels verified.** Roughly one in ten is
+still wrong. No semantic false-positive rate is publishable until the n=100
+human validation. The deterministic FP rate is unaffected and re-measures at
+**0.0%** — those checks never consult the pairing.
+
+### The abstention band was removed
+
+`ABSTAIN_BELOW = 0.5` gated `wrong_product` verdicts by self-reported
+confidence, and its docstring said it had been "CALIBRATED against measured data
+in the coverage-risk sweep". It had not been. The measurement above shows
+nothing is ever below 0.5, so it could not fire.
+
+Removed rather than lowered — a threshold that never triggers advertises a
+calibration we do not have. The `abstention` finding source went with it: once
+the band was gone nothing could produce one, and a decision-table row no code
+path can reach is a claim about behaviour that does not exist. `SOURCE_DECISION`
+is now exactly two rows, and the gate test enumerates sources rather than naming
+them, so a source that blocks fails a test instead of a payment.
 
 ## Reproducibility
 Pinned model id, temperature 0, prompt-hash cache keyed on model, corpus hash

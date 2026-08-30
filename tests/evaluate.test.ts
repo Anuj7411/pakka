@@ -93,7 +93,7 @@ describe('evaluate: detection vs classification are different things', () => {
     const r = evaluate(corpus, perfect, 'perfect');
     expect(r.detection.rate).toBe(1);
     expect(r.classification.rate).toBe(1);
-    expect(r.falsePositive.rate).toBe(0);
+    expect(r.falsePositive!.rate).toBe(0);
   });
 
   it('right line, WRONG class counts as detected but NOT classified', () => {
@@ -146,8 +146,8 @@ describe('evaluate: false positives and silence', () => {
         : [],
     });
     const r = evaluate(corpus, flagsConforming, 'fp');
-    expect(r.falsePositive.rate).toBe(1);
-    expect(r.falsePositive.total).toBe(2);
+    expect(r.falsePositive!.rate).toBe(1);
+    expect(r.falsePositive!.total).toBe(2);
     expect(r.detection.rate).toBe(0);
   });
 
@@ -168,9 +168,9 @@ describe('evaluate: false positives and silence', () => {
     });
     const r = evaluate(corpus, half, 'half');
     expect(r.detection.hits).toBe(1);
-    expect(r.falsePositive.hits).toBe(1);
-    expect(r.precision.rate).toBe(0.5);
-    expect(r.precision.total).toBe(2);
+    expect(r.falsePositive!.hits).toBe(1);
+    expect(r.precision!.rate).toBe(0.5);
+    expect(r.precision!.total).toBe(2);
   });
 
   it('reports prevalence so precision is never read alone', () => {
@@ -248,7 +248,7 @@ describe('evaluate: trivial baselines are honest floors', () => {
     const r = evaluate(corpus, BASELINES['neverFlag']!, 'never');
     expect(r.detection.rate).toBe(0);
     expect(r.classification.rate).toBe(0);
-    expect(r.falsePositive.rate).toBe(0);
+    expect(r.falsePositive!.rate).toBe(0);
   });
 
   it('alwaysFlag scores PERFECT detection and 100% false positives', () => {
@@ -256,9 +256,9 @@ describe('evaluate: trivial baselines are honest floors', () => {
     // false-positive rate beside it is meaningless.
     const r = evaluate(corpus, BASELINES['alwaysFlag']!, 'always');
     expect(r.detection.rate).toBe(1);
-    expect(r.falsePositive.rate).toBe(1);
-    expect(r.precision.rate).toBe(0.5); // exactly prevalence
-    expect(r.precision.rate).toBeCloseTo(r.prevalence, 10);
+    expect(r.falsePositive!.rate).toBe(1);
+    expect(r.precision!.rate).toBe(0.5); // exactly prevalence
+    expect(r.precision!.rate).toBeCloseTo(r.prevalence, 10);
   });
 
   it('biggestCart measures the cart-size leak rather than hiding it', () => {
@@ -266,14 +266,14 @@ describe('evaluate: trivial baselines are honest floors', () => {
     // quantifies it. It fires only on carts with more than two lines.
     const r = evaluate(corpus, BASELINES['biggestCart']!, 'size');
     expect(r.detection.hits).toBe(1); // only the 3-line divergent case
-    expect(r.falsePositive.hits).toBe(1); // and the 3-line conforming one
+    expect(r.falsePositive!.hits).toBe(1); // and the 3-line conforming one
   });
 
   it('a checker cannot beat alwaysFlag on detection without beating it on FP', () => {
     const always = evaluate(corpus, BASELINES['alwaysFlag']!, 'a');
     const good = evaluate(corpus, perfect, 'p');
     expect(good.detection.rate).toBeLessThanOrEqual(always.detection.rate);
-    expect(good.falsePositive.rate).toBeLessThan(always.falsePositive.rate);
+    expect(good.falsePositive!.rate).toBeLessThan(always.falsePositive!.rate);
   });
 });
 
@@ -285,8 +285,8 @@ describe('evaluate: determinism and edge cases', () => {
 
   it('handles a corpus with no conforming cases without dividing by zero', () => {
     const r = evaluate(corpusOf([divergent('a', 'SCOPE_VIOLATION', 'easy')]), perfect, 'x');
-    expect(r.falsePositive.total).toBe(0);
-    expect(r.falsePositive.rate).toBe(0);
+    expect(r.falsePositive!.total).toBe(0);
+    expect(r.falsePositive!.rate).toBe(0);
     expect(Number.isFinite(r.prevalence)).toBe(true);
   });
 
@@ -299,7 +299,7 @@ describe('evaluate: determinism and edge cases', () => {
 
   it('never produces NaN in any reported rate', () => {
     const r = evaluate(corpusOf([]), perfect, 'empty');
-    const rates = [r.detection, r.classification, r.falsePositive, r.precision, r.silent];
+    const rates = [r.detection, r.classification, r.falsePositive!, r.precision!, r.silent];
     for (const x of rates) {
       expect(Number.isFinite(x.rate)).toBe(true);
       expect(Number.isFinite(x.lo)).toBe(true);
@@ -359,5 +359,41 @@ describe('cartTotalMinor', () => {
     const total = cartTotalMinor({ cartId: 'c', lines });
     expect(total).toBe(333 * 7 * 100);
     expect(Number.isInteger(total)).toBe(true);
+  });
+});
+
+describe('evaluate: a false-positive rate is withheld when it would not be about the checker', () => {
+  const corpus = corpusOf([
+    divergent('a', 'SCOPE_VIOLATION', 'easy'),
+    conforming('b', 'SCOPE_VIOLATION', 'easy'),
+  ]);
+
+  it('reports it for a checker that reads only declared fields', () => {
+    const r = evaluate(corpus, perfect, 'deterministic', { readsProductName: false });
+    expect(r.falsePositive).not.toBeNull();
+    expect(r.precision).not.toBeNull();
+  });
+
+  it('withholds it for a checker that reads the product name', () => {
+    // The conforming label says "nearest product we hold", not "product that
+    // answers this request" — WebShop's gold target is in our catalogue for 4
+    // instructions out of 10,136. A name-reading checker is right to object,
+    // so counting that as its error measures the corpus.
+    const r = evaluate(corpus, perfect, 'semantic', { readsProductName: true });
+    expect(r.falsePositive).toBeNull();
+    expect(r.precision).toBeNull();
+  });
+
+  it('says so in the report rather than printing a caveat under a number', () => {
+    const lines = formatReport(
+      evaluate(corpus, perfect, 'semantic', { readsProductName: true }),
+      fmtRate,
+    ).join('\n');
+    expect(lines).toContain('NOT MEASURABLE');
+    expect(lines).not.toMatch(/false positive\s+\d/);
+  });
+
+  it('defaults to measuring, so the withholding must be asked for explicitly', () => {
+    expect(evaluate(corpus, perfect, 'x').falsePositive).not.toBeNull();
   });
 });

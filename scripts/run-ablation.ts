@@ -137,12 +137,19 @@ const both: Checker = (c: Case) => {
   return { caseId: c.caseId, violations: out };
 };
 
-for (const [name, checker] of [
-  ['ABLATION A — deterministic only', deterministicOnly],
-  ['ABLATION B — semantic only', semanticOnly],
-  ['ABLATION C — both', both],
+// `readsProductName` decides whether a false-positive rate is reported at all.
+// A conforming case attaches a human instruction to the nearest product we
+// hold, so its NAME describes a different object than its declared fields do —
+// "butter pecan flavored coffee" paired with "Pilon Espresso Coffee". The
+// deterministic checker never sees the name, so its FP rate is about the
+// checker; the other two do, and theirs would be about our corpus. See
+// CheckerFacts in evaluate.ts.
+for (const [name, checker, readsProductName] of [
+  ['ABLATION A — deterministic only', deterministicOnly, false],
+  ['ABLATION B — semantic only', semanticOnly, true],
+  ['ABLATION C — both', both, true],
 ] as const) {
-  console.log(formatReport(evaluate(corpus, checker, name), fmtRate).join('\n'));
+  console.log(formatReport(evaluate(corpus, checker, name, { readsProductName }), fmtRate).join('\n'));
   console.log();
 }
 

@@ -24,14 +24,40 @@ export interface Prediction {
 
 export type Checker = (c: Case) => Prediction;
 
+/**
+ * Does this checker read the product NAME?
+ *
+ * It decides whether a false-positive rate means anything. A conforming case is
+ * built by attaching a human instruction, and its gold target's attributes, to
+ * the nearest product we actually hold — because WebShop's gold target is in
+ * our catalogue for 4 instructions out of 10,136. The declared fields are
+ * internally consistent, so a checker that reads only those is measuring itself
+ * when it reports a false positive.
+ *
+ * The product NAME is not consistent with them. It names a different object,
+ * and it says so out loud: "full sized bed frame" paired with "Cole Frame Queen
+ * Bed", "butter pecan coffee" with "Pilon Espresso Coffee". A checker that
+ * reads names is right to flag those, and counting that as a false positive
+ * measures our corpus, not the checker.
+ *
+ * So the rate is withheld rather than printed with a caveat underneath it. A
+ * number in a table gets quoted; a caveat does not.
+ */
+export interface CheckerFacts {
+  readonly readsProductName: boolean;
+}
+
 export interface Report {
   readonly name: string;
   /** Flagged a divergent cart at all, regardless of line or class. */
   readonly detection: Rate;
   /** Flagged the right line with the right class. */
   readonly classification: Rate;
-  /** Conforming carts wrongly flagged. The number a payments company cares about. */
-  readonly falsePositive: Rate;
+  /**
+   * Conforming carts wrongly flagged. The number a payments company cares
+   * about — and null when it cannot be measured; see CheckerFacts.
+   */
+  readonly falsePositive: Rate | null;
   readonly byClass: Readonly<Record<DivergenceClass, Rate>>;
   readonly byTier: Readonly<Record<Tier, Rate>>;
   readonly byClassTier: Readonly<Record<string, Rate>>;
@@ -42,11 +68,19 @@ export interface Report {
   /** Share of divergent cases where the checker abstained entirely. */
   readonly silent: Rate;
   readonly prevalence: number;
-  /** Precision, meaningless without prevalence — always read them together. */
-  readonly precision: Rate;
+  /**
+   * Precision, meaningless without prevalence — always read them together.
+   * Null whenever falsePositive is, since it is computed from it.
+   */
+  readonly precision: Rate | null;
 }
 
-export function evaluate(corpus: Corpus, checker: Checker, name: string): Report {
+export function evaluate(
+  corpus: Corpus,
+  checker: Checker,
+  name: string,
+  facts: CheckerFacts = { readsProductName: false },
+): Report {
   const divergent = corpus.cases.filter((c) => !c.conforming);
   const conforming = corpus.cases.filter((c) => c.conforming);
 
@@ -102,13 +136,18 @@ export function evaluate(corpus: Corpus, checker: Checker, name: string): Report
 
   // Precision over CASES: a divergent case counts as a true positive when the
   // checker flagged it; a conforming case flagged is a false positive.
-  const precision = rate(detected, detected + falsePositives);
+  //
+  // Both are withheld from a name-reading checker: the conforming labels are
+  // not verified against the product name, so neither number would be about
+  // the checker.
+  const measurable = !facts.readsProductName;
+  const precision = measurable ? rate(detected, detected + falsePositives) : null;
 
   return {
     name,
     detection: rate(detected, divergent.length),
     classification: rate(classified, divergent.length),
-    falsePositive: rate(falsePositives, conforming.length),
+    falsePositive: measurable ? rate(falsePositives, conforming.length) : null,
     byClass,
     byTier,
     byClassTier,
@@ -164,8 +203,13 @@ export function formatReport(r: Report, fmt: (x: Rate) => string): string[] {
   out.push(`── ${r.name} ──`);
   out.push(`  detection      ${fmt(r.detection)}   (flagged the cart at all)`);
   out.push(`  classification ${fmt(r.classification)}   (right line AND right class)`);
-  out.push(`  false positive ${fmt(r.falsePositive)}   (conforming carts wrongly flagged)`);
-  out.push(`  precision      ${fmt(r.precision)}   at prevalence ${(r.prevalence * 100).toFixed(0)}%`);
+  if (r.falsePositive === null || r.precision === null) {
+    out.push('  false positive NOT MEASURABLE — conforming labels are not verified');
+    out.push('  precision      NOT MEASURABLE — depends on the false-positive count');
+  } else {
+    out.push(`  false positive ${fmt(r.falsePositive)}   (conforming carts wrongly flagged)`);
+    out.push(`  precision      ${fmt(r.precision)}   at prevalence ${(r.prevalence * 100).toFixed(0)}%`);
+  }
   out.push(`  silent         ${fmt(r.silent)}   (divergent carts where it said nothing)`);
   out.push('  by class:');
   for (const k of DIVERGENCE_CLASSES) out.push(`    ${k.padEnd(22)} ${fmt(r.byClass[k])}`);
