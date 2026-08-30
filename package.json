@@ -16,7 +16,9 @@
     "data:fetch": "bash scripts/fetch-data.sh",
     "data:verify": "node scripts/verify-data.mjs",
     "coverage": "vitest run --coverage --coverage.provider=v8 --coverage.include='src/**'",
-    "mutation": "stryker run"
+    "mutation": "stryker run",
+    "eval": "tsx scripts/run-eval.ts data",
+    "eval:fixture": "tsx scripts/run-eval.ts tests/fixtures"
   },
   "devDependencies": {
     "@stryker-mutator/core": "^8.7.1",
