@@ -12,3 +12,6 @@ data/*.json
 data/*.tar.gz
 reports/
 .stryker-tmp/
+
+# Security reports stay local
+.gstack/

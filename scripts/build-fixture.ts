@@ -14,6 +14,19 @@
  * Unused product fields (full_description, images, most of
  * product_information) are stripped - the loader never reads them, and they
  * were 90% of the size.
+ *
+ * INSTRUCTION records are stripped of `worker_id` and `assignment_id`.
+ *
+ * Those are Amazon Mechanical Turk identifiers for real people. They are
+ * persistent and pseudonymous, and published research has shown MTurk worker
+ * IDs can be cross-referenced against public Amazon profiles - so publishing
+ * them de-anonymises crowdworkers and ties each one to the instruction they
+ * wrote. This repo is public.
+ *
+ * A security audit found 414 such records covering 60 distinct workers in the
+ * committed fixture. `normaliseInstruction()` already dropped both fields, so
+ * nothing in the codebase ever read them - but this builder copied raw records
+ * wholesale, and the protection sat one layer above the leak.
  */
 import { writeFileSync, readFileSync } from 'node:fs';
 import { loadWebShop, usableProducts } from '../src/corpus/webshop.js';
@@ -50,10 +63,36 @@ for (const [, ps] of [...prodsByCat.entries()].sort(([a], [b]) => (a < b ? -1 : 
   for (const p of rng.shuffle(ps).slice(0, PRODUCTS_PER_CATEGORY)) keptProductNames.add(p.name);
 }
 
+/** Fields the loader reads. Anything else is dropped, including identifiers. */
+const KEEP_INSTRUCTION_FIELDS = [
+  'asin',
+  'instruction',
+  'attributes',
+  'options',
+  'instruction_attributes',
+  'instruction_options',
+] as const;
+
+/** Never emitted. Personal data with no purpose here. */
+const DROP_INSTRUCTION_FIELDS = ['worker_id', 'assignment_id'] as const;
+
 const rawIns = JSON.parse(readFileSync('data/items_human_ins.json', 'utf8')) as Record<string, unknown[]>;
 const outIns: Record<string, unknown[]> = {};
 for (const asin of Object.keys(rawIns).sort()) {
-  if (keptAsins.has(asin)) outIns[asin] = rawIns[asin]!;
+  if (!keptAsins.has(asin)) continue;
+  outIns[asin] = (rawIns[asin] as Record<string, unknown>[]).map((rec) => {
+    const o: Record<string, unknown> = {};
+    for (const k of KEEP_INSTRUCTION_FIELDS) if (k in rec) o[k] = rec[k];
+    return o;
+  });
+}
+
+// Fail loudly rather than emit a fixture carrying identifiers.
+const leaked = JSON.stringify(outIns);
+for (const field of DROP_INSTRUCTION_FIELDS) {
+  if (leaked.includes(field)) {
+    throw new Error(`build-fixture: ${field} survived the strip. Refusing to write.`);
+  }
 }
 
 const KEEP_FIELDS = ['name', 'product_information', 'brand', 'pricing', 'list_price', 'product_category', 'small_description'] as const;
