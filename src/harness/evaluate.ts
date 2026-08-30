@@ -115,7 +115,10 @@ export function evaluate(corpus: Corpus, checker: Checker, name: string): Report
     macroByTier: macroAverage(TIERS.map((t) => byTier[t])),
     macroByClassTier: macroAverage(Object.values(byClassTier)),
     silent: rate(silent, divergent.length),
-    prevalence: divergent.length / corpus.cases.length,
+    // Guard the divide: an empty corpus would otherwise yield 0/0 = NaN, and a
+    // NaN in a report is worse than a crash because it propagates silently
+    // through every derived figure. Found by test.
+    prevalence: corpus.cases.length === 0 ? 0 : divergent.length / corpus.cases.length,
     precision,
   };
 }
