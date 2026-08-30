@@ -13,17 +13,17 @@
  */
 import type { WebShopData, Instruction, Product } from './webshop.js';
 import { tokenise } from './similarity.js';
+import { carriesHeadNoun } from './headnoun.js';
 
 /**
- * Minimum instruction↔product similarity for a pairing to be usable.
+ * Minimum instruction↔product similarity for a pairing to be considered.
  *
- * Measured, not guessed. Across 9,605 rich instructions and 804 products:
+ * A NECESSARY condition, not a sufficient one. On its own this threshold
+ * produced conforming cases that were not conforming — see headnoun.ts. Every
+ * candidate must also carry the request's head noun.
+ *
+ * Measured across 9,605 rich instructions and 804 products:
  *   >= 0.30 : 145    >= 0.25 : 514    >= 0.20 : 1,570    >= 0.15 : 4,016
- *
- * 0.20 was chosen by inspecting pairs at the boundary — e.g. "gold plated,
- * high speed hdmi cable" paired with "QualGear High Speed HDMI 2.0 Cable with
- * Ethernet". Those are genuine matches, and it leaves 1,570 candidates, far
- * more than any corpus we need.
  */
 export const MIN_PAIR_SIMILARITY = 0.2;
 
@@ -91,7 +91,12 @@ function computePairings(
         best = products[i]!;
       }
     }
-    if (best && bestScore >= minScore) {
+    // Two conditions, and the second is the one that matters. Similarity says
+    // the strings have a lot in common; the head-noun check says the product is
+    // the KIND OF THING asked for. "nut free gluten free chocolate" scores well
+    // against "Almonds Nut Thins Gluten Free Cracker Crisps" on every modifier
+    // and is still the wrong product.
+    if (best && bestScore >= minScore && carriesHeadNoun(instruction.text, best.name)) {
       out.push({ instruction, product: best, score: bestScore });
     }
   }

@@ -54,11 +54,16 @@ export function joinAll(decisions: readonly GateDecision[]): GateDecision {
  *
  * This also puts the asymmetry the right way round for a payments company:
  * we block only what we can prove, and escalate what we merely believe.
+ *
+ * There was a third source, `abstention`, for model verdicts below a confidence
+ * band. The band was removed once Day 4 measured the confidence signal as
+ * degenerate (see judge.ts), and the source went with it: nothing could produce
+ * one, and a decision-table row no code path can reach is a claim about
+ * behaviour that does not exist.
  */
 export const SOURCE_DECISION = {
   deterministic: 'block',
   semantic: 'escalate',
-  abstention: 'escalate',
 } as const satisfies Record<string, GateDecision>;
 
 export type FindingSource = keyof typeof SOURCE_DECISION;

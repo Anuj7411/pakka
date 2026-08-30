@@ -13,6 +13,7 @@ import {
   DECISIONS,
   SOURCE_DECISION,
   type Finding,
+  type FindingSource,
 } from '../src/gate/compose.js';
 import { VERDICTS, parseVerdict, buildPrompt, SYSTEM_INSTRUCTION } from '../src/semantic/prompt.js';
 import {
@@ -25,6 +26,9 @@ import {
 } from '../src/semantic/redact.js';
 import { createGeminiProvider } from '../src/semantic/gemini.js';
 import type { CartLine, MandateItem } from '../src/corpus/types.js';
+
+/** Every finding source the gate knows about, derived rather than restated. */
+const SOURCES = Object.keys(SOURCE_DECISION) as FindingSource[];
 
 const item = (over: Partial<MandateItem> = {}): MandateItem => ({
   itemId: 'i0',
@@ -92,18 +96,27 @@ describe('SECURITY: monotonic permission — the model can never approve', () =>
   it('adding ANY semantic finding never weakens a deterministic block', () => {
     const deterministic: Finding[] = [{ lineId: 'a', source: 'deterministic', detail: 'x' }];
     expect(compose(deterministic, false).decision).toBe('block');
-    for (const source of ['semantic', 'abstention'] as const) {
-      const withSemantic: Finding[] = [...deterministic, { lineId: 'b', source, detail: 'y' }];
-      expect(compose(withSemantic, false).decision).toBe('block');
+    for (const source of SOURCES) {
+      const withOther: Finding[] = [...deterministic, { lineId: 'b', source, detail: 'y' }];
+      expect(compose(withOther, false).decision).toBe('block');
     }
   });
 
-  it('semantic findings escalate but never block, deterministic ones block', () => {
-    // Different epistemic status: we block only what we can prove.
+  it('exactly one source may block, and it is the provable one', () => {
+    // Different epistemic status: we block only what we can prove. Enumerated
+    // over every source rather than named ones, so a new source that blocks
+    // fails here rather than in front of a payment.
     expect(SOURCE_DECISION.deterministic).toBe('block');
     expect(SOURCE_DECISION.semantic).toBe('escalate');
-    expect(SOURCE_DECISION.abstention).toBe('escalate');
+    expect(SOURCES.filter((s) => SOURCE_DECISION[s] === 'block')).toEqual(['deterministic']);
     expect(rank(SOURCE_DECISION.semantic)).toBeLessThan(rank(SOURCE_DECISION.deterministic));
+  });
+
+  it('carries no source that nothing can produce', () => {
+    // `abstention` outlived the confidence band that was its only producer. A
+    // decision-table row no code path can reach is a claim about behaviour that
+    // does not exist, so the table must stay exactly as wide as the sources.
+    expect(SOURCES).toEqual(['deterministic', 'semantic']);
   });
 
   it('a degraded run can never come back as a clean allow', () => {

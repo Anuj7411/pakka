@@ -9,6 +9,19 @@
  *
  * That focus is also what makes the ablation legible: the model's contribution
  * is one named class, not a diffuse uplift.
+ *
+ * ── There is no confidence band, deliberately ───────────────────────────────
+ * An earlier version treated `wrong_product` below 0.5 confidence as an
+ * abstention. Day 4 measured the confidence signal across 37 distinct prompts:
+ * two distinct values, 94.6% of them exactly 1.0, ECE 71.1%. Nothing was ever
+ * below 0.5, so the band could not fire, and its own docstring claimed it had
+ * been calibrated when it had not been. A threshold that never triggers is dead
+ * code that advertises a calibration we do not have, so it is gone rather than
+ * lowered.
+ *
+ * An abstention mechanism, if we want one, has to come from a signal that
+ * varies — agreement across repeated samples, or a second lens — not from
+ * asking the model how sure it is.
  */
 import type { Cart, Mandate } from '../corpus/types.js';
 import type { CartAssessment } from '../deterministic/checkers.js';
@@ -18,18 +31,9 @@ import { buildPrompt, SYSTEM_INSTRUCTION, type JudgeVerdict } from './prompt.js'
 import type { Provider } from './provider.js';
 import type { Finding } from '../gate/compose.js';
 
-/**
- * Confidence below which a `wrong_product` verdict is treated as abstention.
- *
- * Provisional. The abstention band is CALIBRATED against measured data in the
- * coverage-risk sweep, not chosen by feel — see docs/RESULTS-DAY4.md. Named
- * here so the number in the results traces to a decision.
- */
-export const ABSTAIN_BELOW = 0.5;
-
 export interface SemanticResult {
   readonly findings: readonly Finding[];
-  /** Every verdict, for calibration. Abstentions included. */
+  /** Every verdict, including `unsure` and failures, for calibration. */
   readonly verdicts: readonly { lineId: string; verdict: JudgeVerdict }[];
   /** True when any call failed or the provider declined. */
   readonly degraded: boolean;
@@ -48,9 +52,7 @@ export async function judgeCart(
   mandate: Mandate,
   assessment: CartAssessment,
   provider: Provider,
-  opts: { abstainBelow?: number } = {},
 ): Promise<SemanticResult> {
-  const abstainBelow = opts.abstainBelow ?? ABSTAIN_BELOW;
   const alreadyFlagged = new Set(assessment.violations.map((v) => v.lineId));
   const assignment = assignLines(cart, mandate);
 
@@ -78,22 +80,14 @@ export async function judgeCart(
     called++;
     verdicts.push({ lineId: line.lineId, verdict });
 
+    // Every `wrong_product` is a finding, whatever confidence it carries. The
+    // reported confidence is not used to gate anything — see the header.
     if (verdict.verdict === 'wrong_product') {
-      if (verdict.confidence >= abstainBelow) {
-        findings.push({
-          lineId: line.lineId,
-          source: 'semantic',
-          detail: `does not answer "${assigned.item.text.slice(0, 60)}": ${verdict.reason.slice(0, 120)}`,
-        });
-      } else {
-        // Below the band: recorded as abstention, which still escalates. A
-        // low-confidence accusation is not evidence, but it is not nothing.
-        findings.push({
-          lineId: line.lineId,
-          source: 'abstention',
-          detail: `low-confidence (${verdict.confidence.toFixed(2)}) doubt about fit`,
-        });
-      }
+      findings.push({
+        lineId: line.lineId,
+        source: 'semantic',
+        detail: `does not answer "${assigned.item.text.slice(0, 60)}": ${verdict.reason.slice(0, 120)}`,
+      });
     }
 
     // A failure is an outage, not an opinion. Keyed off the explicit flag
