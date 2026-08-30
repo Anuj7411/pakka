@@ -84,13 +84,19 @@ export function createGeminiProvider(opts: GeminiOptions = {}): Provider {
         });
 
         if (!res.ok) {
-          // Status only. A provider error body can echo the request, and this
-          // message may end up in a log.
+          // A 429 body states how long to wait ("Please retry in 3.99s"). Blind
+          // exponential backoff ignored that and compounded to 60s while the
+          // server was asking for 4 - which is how a paced run turned into a
+          // stall. Surface the number so the caller can honour it.
+          const retryAfter = await extractRetryDelay(res);
           return {
             verdict: 'unsure',
             confidence: 0,
+            // Status only, never the body: a provider error can echo the
+            // request, and this string may reach a log.
             reason: `provider HTTP ${res.status}`,
             failed: true,
+            ...(retryAfter === null ? {} : { retryAfterMs: retryAfter }),
           };
         }
 
@@ -104,6 +110,32 @@ export function createGeminiProvider(opts: GeminiOptions = {}): Provider {
       }
     },
   };
+}
+
+/**
+ * The server's own retry delay, in ms.
+ *
+ * Prefers the `Retry-After` header, falls back to the seconds embedded in the
+ * Gemini quota message. Returns null when neither is present, so the caller
+ * falls back to its own pacing rather than guessing zero.
+ */
+async function extractRetryDelay(res: Response): Promise<number | null> {
+  const header = res.headers?.get?.('retry-after');
+  if (header) {
+    const secs = Number(header);
+    if (Number.isFinite(secs) && secs >= 0) return Math.ceil(secs * 1000);
+  }
+  try {
+    const body = await res.text();
+    const m = /retry in ([\d.]+)s/i.exec(body) ?? /"retryDelay"\s*:\s*"([\d.]+)s"/i.exec(body);
+    if (m?.[1]) {
+      const secs = Number(m[1]);
+      if (Number.isFinite(secs) && secs >= 0) return Math.ceil(secs * 1000);
+    }
+  } catch {
+    // Body unreadable; caller uses its own pacing.
+  }
+  return null;
 }
 
 /** Pull the first candidate's text. Any shape surprise becomes `unsure` upstream. */

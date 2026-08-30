@@ -38,6 +38,14 @@ export interface JudgeVerdict {
    * A failure must never be counted as an opinion, and must never be cached.
    */
   readonly failed: boolean;
+  /**
+   * How long the provider asked us to wait, in ms, when it said so.
+   *
+   * Present only on a rate-limited failure. Honouring the server's stated
+   * delay beats guessing: blind exponential backoff reached 60s while the
+   * server was asking for 4, and a paced sweep became a stall.
+   */
+  readonly retryAfterMs?: number;
 }
 
 /** JSON Schema for provider-side structured output. Free text is not accepted. */

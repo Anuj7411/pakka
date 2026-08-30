@@ -224,6 +224,48 @@ describe('withRateLimit', () => {
   });
 });
 
+describe('withRateLimit: honours the stated retry delay', () => {
+  it('waits the time the provider asked for, not its own guess', async () => {
+    // Blind exponential backoff reached 60s while Gemini was asking for 4,
+    // which turned a paced sweep into a stall. The server knows better than we
+    // do; use its number.
+    vi.useFakeTimers();
+    try {
+      const slow: JudgeVerdict = {
+        verdict: 'unsure',
+        confidence: 0,
+        reason: 'provider HTTP 429',
+        failed: true,
+        retryAfterMs: 4000,
+      };
+      const inner = stubProvider([slow, ok()]);
+      const p = withRateLimit(inner, { minIntervalMs: 60_000, maxRetries: 2 });
+      const promise = p.judge({ system: 's', user: 'u' });
+      // Far less than the 60s minInterval would imply, but more than the
+      // stated 4s: the stated delay wins.
+      await vi.advanceTimersByTimeAsync(70_000);
+      const v = await promise;
+      expect(v.failed).toBe(false);
+      expect(inner.calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to exponential backoff when no delay is stated', async () => {
+    vi.useFakeTimers();
+    try {
+      const inner = stubProvider([fail('provider HTTP 503'), ok()]);
+      const p = withRateLimit(inner, { minIntervalMs: 10, maxRetries: 2 });
+      const promise = p.judge({ system: 's', user: 'u' });
+      await vi.runAllTimersAsync();
+      expect((await promise).failed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('NULL_PROVIDER', () => {
   it('marks itself failed, so a run without a model reads as degraded', async () => {
     // Used by the deterministic-only ablation. If it reported success, a run

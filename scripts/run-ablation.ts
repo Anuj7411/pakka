@@ -31,8 +31,9 @@ const corpus = generateCorpus(data, { seed: 20260829, mandateCount });
 const budget = new CallBudget(budgetLimit);
 const cache = new VerdictCache('llm-cache');
 const paceMs = Number(process.argv[5] ?? 4500);
+const model = process.argv[6] ?? 'gemini-3.1-flash-lite';
 const provider = withCacheAndBudget(
-  withRateLimit(createGeminiProvider({ model: 'gemini-2.5-flash' }), { minIntervalMs: paceMs }),
+  withRateLimit(createGeminiProvider({ model }), { minIntervalMs: paceMs }),
   cache,
   budget,
 );
