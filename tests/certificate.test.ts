@@ -428,3 +428,78 @@ describe('certificate: schema surface', () => {
     expect(issue({ orderId: 'order_abc' }).order_id).toBe('order_abc');
   });
 });
+
+describe('security audit regressions (2026-08-31)', () => {
+  it('a second handle cannot append onto a stale head', () => {
+    // Found by /cso. append() compared prev_hash against an in-memory head
+    // captured at construction, so two handles on one path both believed they
+    // held it and BOTH writes succeeded — leaving a chain that could never
+    // validate. A broken chain is worse than a refused write: it is
+    // indistinguishable from tampering, and routine false alarms are how a real
+    // tamper event gets waved through.
+    const dir = tmpDir();
+    const path = join(dir, 'audit.jsonl');
+    try {
+      const a = new AuditLog(path);
+      const b = new AuditLog(path);
+      const head = a.head();
+
+      a.append(issue({ prevHash: head }));
+      expect(() => b.append(issue({ prevHash: head }))).toThrow(AuditLogError);
+
+      expect(AuditLog.read(path)).toHaveLength(1);
+      expect(AuditLog.verify(path, verifier).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a handle sees writes made through another handle', () => {
+    const dir = tmpDir();
+    const path = join(dir, 'audit.jsonl');
+    try {
+      const a = new AuditLog(path);
+      const b = new AuditLog(path);
+      a.append(issue({ prevHash: a.head() }));
+
+      expect(b.head()).toBe(a.head());
+      expect(b.length).toBe(1);
+      expect(() => b.append(issue({ prevHash: b.head() }))).not.toThrow();
+      expect(AuditLog.verify(path, verifier).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a wrong-key result says whether the signature ALSO failed', () => {
+    // Found by /cso. key_id is inside the signed body, so an attacker editing
+    // the decision AND the key id got `wrong-key` — which reads as a rotation
+    // mistake and closes the investigation before a tampering ticket is opened.
+    const rotated = verifierFromPublicKey(generateSigner().publicKeyBase64());
+
+    // Genuine rotation: untouched certificate, verifier holds the wrong key.
+    const honest = verifyCertificate(issue(), rotated);
+    expect(honest.reason).toBe('wrong-key');
+    expect(honest.alsoFailedUnderSuppliedKey).toBe(true);
+
+    // Tampering hidden behind a rewritten key id, checked against OUR key.
+    const tampered = { ...issue({ decision: 'block' }), decision: 'allow' as const, key_id: 'f'.repeat(16) };
+    const masked = verifyCertificate(tampered, verifier);
+    expect(masked.reason).toBe('wrong-key');
+    expect(masked.alsoFailedUnderSuppliedKey).toBe(true);
+  });
+
+  it('still reports bad-signature when the key id was not touched', () => {
+    const tampered = { ...issue({ decision: 'block' }), decision: 'allow' as const };
+    expect(verifyCertificate(tampered, verifier).reason).toBe('bad-signature');
+  });
+
+  it('documents the signing key in .env.example', () => {
+    // The variable was named only inside a thrown error, so an operator hitting
+    // setup would improvise — a key pasted into source, or one copied from a
+    // tutorial and shared across environments.
+    const example = readFileSync('.env.example', 'utf8');
+    expect(example).toContain('CONFORMANCE_SIGNING_KEY');
+    expect(example).toMatch(/CONFORMANCE_SIGNING_KEY=\s*$/m); // present, and empty
+  });
+});

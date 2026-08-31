@@ -160,6 +160,17 @@ export type VerificationFailure =
 export interface VerificationResult {
   readonly ok: boolean;
   readonly reason?: VerificationFailure;
+  /**
+   * On `wrong-key`: did the signature ALSO fail under the key we were given?
+   *
+   * "Wrong key" alone reads as a rotation mistake and closes the investigation.
+   * But `key_id` is inside the signed body, so an attacker who edits the
+   * decision and the key id together lands here — and an operator who stops at
+   * "fetch the other key" never opens a tampering ticket. When this is true the
+   * record must be re-checked against the key it names, and a failure there is
+   * tampering, not rotation.
+   */
+  readonly alsoFailedUnderSuppliedKey?: boolean;
 }
 
 /**
@@ -171,7 +182,6 @@ export interface VerificationResult {
  */
 export function verifyCertificate(cert: Certificate, verifier: Verifier): VerificationResult {
   if (cert.v !== CERTIFICATE_VERSION) return { ok: false, reason: 'unknown-version' };
-  if (cert.key_id !== verifier.keyId) return { ok: false, reason: 'wrong-key' };
 
   const { signature, ...body } = cert;
   if (typeof signature !== 'string' || signature === '') {
@@ -185,7 +195,15 @@ export function verifyCertificate(cert: Certificate, verifier: Verifier): Verifi
     // be canonicalised cannot have been signed by us.
     return { ok: false, reason: 'malformed' };
   }
-  return verifier.verify(payload, signature)
-    ? { ok: true }
-    : { ok: false, reason: 'bad-signature' };
+
+  // The signature is checked even when the key id does not match, because
+  // `key_id` is part of the signed body: returning early on it let a tampered
+  // decision be reported as a rotation problem. Verifying against a key that
+  // did not sign is cheap and safe, and its result is what tells the two apart.
+  const signatureOk = verifier.verify(payload, signature);
+
+  if (cert.key_id !== verifier.keyId) {
+    return { ok: false, reason: 'wrong-key', alsoFailedUnderSuppliedKey: !signatureOk };
+  }
+  return signatureOk ? { ok: true } : { ok: false, reason: 'bad-signature' };
 }

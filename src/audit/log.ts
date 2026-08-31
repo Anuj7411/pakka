@@ -92,30 +92,64 @@ export function validateChain(
 /**
  * A log backed by a JSON Lines file.
  *
- * Reads the whole file on construction to recover the head. That is fine at the
- * scale this runs at (one record per order, a demo corpus) and it is honest
- * about not being a database.
+ * Holds NO cached state. An earlier version cached the head and the record
+ * count at construction, and both went stale the moment anything else wrote:
+ * two handles on one path each believed they held the head, and both appends
+ * succeeded, producing a chain that could never validate. Every read goes to
+ * the file.
+ *
+ * That costs a read per call, which is fine at the scale this runs at — one
+ * record per order — and it is honest about not being a database.
  */
 export class AuditLog {
   readonly path: string;
-  #head: string;
-  #count: number;
 
   constructor(path: string) {
     this.path = path;
-    const existing = AuditLog.read(path);
-    this.#count = existing.length;
-    this.#head =
-      existing.length === 0 ? GENESIS_HASH : certificateHash(existing[existing.length - 1]!);
+    // Fail here rather than at the first append: a log that cannot be read
+    // cannot be safely extended.
+    AuditLog.read(path);
   }
 
-  /** Hash the next record must reference. Pin this externally to detect truncation. */
+  /**
+   * Hash the next record must reference. Pin this externally to detect
+   * truncation.
+   *
+   * Read from the FILE, not from memory. An in-memory head goes stale the
+   * moment anything else writes, and a caller that issues a certificate
+   * against a stale head produces one that can never be appended.
+   */
   head(): string {
-    return this.#head;
+    return this.#headOnDisk();
+  }
+
+  /**
+   * The authoritative head: the hash of the last record actually on disk.
+   *
+   * Only the final line is parsed. The rest of the file is not re-validated
+   * here — `validateChain` is for that — so this stays cheap enough to call on
+   * every append.
+   */
+  #headOnDisk(): string {
+    if (!existsSync(this.path)) return GENESIS_HASH;
+    const lines = readFileSync(this.path, 'utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i]!.trim();
+      if (line === '') continue;
+      try {
+        return certificateHash(JSON.parse(line) as Certificate);
+      } catch {
+        throw new AuditLogError(
+          `Audit log ${this.path} ends with a line that is not valid JSON. ` +
+            'Refusing to append onto an unreadable head.',
+        );
+      }
+    }
+    return GENESIS_HASH;
   }
 
   get length(): number {
-    return this.#count;
+    return AuditLog.read(this.path).length;
   }
 
   /**
@@ -127,16 +161,26 @@ export class AuditLog {
    * the very link the record is supposed to attest.
    */
   append(cert: Certificate): void {
-    if (cert.prev_hash !== this.#head) {
+    // Checked against the FILE, never against a cached value. A cached head is
+    // captured at construction, so two handles on one path both believed
+    // they held the head and both appends succeeded — writing a chain that
+    // could never validate. A broken chain is worse than a refused write: it
+    // is indistinguishable from tampering, and routine false alarms are how a
+    // real tamper event gets waved through.
+    //
+    // This closes the corruption, not the race. Two writers can still both pass
+    // this check before either writes; one then loses. Losing loudly is the
+    // correct outcome. True atomicity needs an exclusive lock or a single
+    // writer, and Day 6 must choose one before this sits in front of orders.
+    const head = this.#headOnDisk();
+    if (cert.prev_hash !== head) {
       throw new AuditLogError(
-        `Certificate ${cert.certificate_id} references ${cert.prev_hash} but the log head is ${this.#head}. ` +
+        `Certificate ${cert.certificate_id} references ${cert.prev_hash} but the log head is ${head}. ` +
           'Re-issue against the current head rather than editing the certificate.',
       );
     }
     mkdirSync(dirname(this.path), { recursive: true });
     appendFileSync(this.path, `${JSON.stringify(cert)}\n`, 'utf8');
-    this.#head = certificateHash(cert);
-    this.#count++;
   }
 
   /** Every certificate, in order. A malformed line throws rather than being skipped. */
