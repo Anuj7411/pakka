@@ -103,7 +103,11 @@ const OPENERS = [
  */
 const BOUNDARY = new Set([
   'that', 'which', 'who', 'whose', 'where', 'when',
-  'in', 'with', 'for', 'from', 'at', 'on', 'under', 'over', 'around',
+  // "on" and "over" are deliberately absent. In this corpus they appear inside
+  // compound descriptors far more often than they introduce a qualifier:
+  // "on-ear headset", "over-ear headphones", "over-the-door rack". Treating
+  // them as boundaries dropped the request to nothing.
+  'in', 'with', 'for', 'from', 'at', 'under', 'around',
   'about', 'made', 'is', 'are', 'has', 'have', 'it', 'also', 'pick', 'please',
   'i', 'must', 'should', 'need', 'want', 'choose', 'select',
   // Negation. "queen sized gray bed WITHOUT a box spring" must resolve to bed,
@@ -263,6 +267,19 @@ export function headNoun(text: string): string | null {
 }
 
 /**
+ * Clause boundaries on the PRODUCT side, which are not the request side's.
+ *
+ * A request is a sentence, so relative pronouns and most prepositions end the
+ * head phrase. A listing name is not: "Over-Ear Headphones", "On-Ear Monitors",
+ * "All-in-One Printer" carry prepositions INSIDE the name. Reusing the request
+ * set truncated "Bose Over-Ear-Headphones" to "Bose" and rejected the pair.
+ *
+ * Only these two reliably introduce a qualifier in a listing name — "Case FOR
+ * Samsung Galaxy", "Curtains WITH Grommets".
+ */
+const PRODUCT_BOUNDARY = new Set(['for', 'with']);
+
+/**
  * The part of a product name that says what the product IS.
  *
  * Listing names append qualifiers after commas: pack size, colour, and —
@@ -280,7 +297,7 @@ function productHeadSegment(name: string): string[] {
       if (CONTAINERS.has(prev)) continue;
       break;
     }
-    if (BOUNDARY.has(t)) break;
+    if (PRODUCT_BOUNDARY.has(t)) break;
     out.push(t);
   }
   return out;
@@ -307,16 +324,5 @@ export function carriesHeadNoun(requestText: string, productName: string): boole
 }
 
 function carries(productTokens: ReadonlySet<string>, head: string): boolean {
-  if (productTokens.has(head)) return true;
-  // Accept a compound: "headphones" inside "overear-headphones" survives
-  // splitting, but "bookshelf" containing "book" must not — so require the
-  // product token to END with the head, which admits compounds without
-  // admitting substrings of unrelated words. Three characters minimum, or
-  // short heads match by accident.
-  if (head.length >= 3) {
-    for (const t of productTokens) {
-      if (t.length > head.length && t.endsWith(head)) return true;
-    }
-  }
-  return false;
+  return productTokens.has(head);
 }
