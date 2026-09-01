@@ -67,19 +67,34 @@ export interface BlockLifecycle {
   readonly revokedOnDay?: number;
 }
 
-export type ViolationCode =
-  | 'AMOUNT_EXCEEDS_MAX'
-  | 'AMOUNT_NOT_POSITIVE'
-  | 'AMOUNT_NOT_INTEGER'
-  | 'VALIDITY_EXCEEDS_MAX'
-  | 'VALIDITY_NOT_POSITIVE'
-  | 'CONCURRENT_BLOCK_FOR_PAIR'
-  | 'DEBIT_EXCEEDS_BLOCK'
-  | 'DEBIT_AFTER_EXPIRY'
-  | 'DEBIT_AFTER_REVOKE'
-  | 'DEBIT_BEFORE_BLOCK'
-  | 'DEBIT_NOT_POSITIVE'
-  | 'DEBIT_ON_UNKNOWN_BLOCK';
+/**
+ * Every rule this verifier enforces, as a runtime value.
+ *
+ * A value rather than a bare union type, because the sensitivity harness has to
+ * prove that each rule is actually exercised — and a type is erased at runtime,
+ * so the alternative was a regex over this file's own source. That version
+ * broke the moment a tool rewrote the source (mutation testing did exactly
+ * that), and a test that reads source text is a test that fails for reasons
+ * unrelated to the thing it checks.
+ *
+ * Adding a code here without adding an injection for it fails a test.
+ */
+export const OC228_VIOLATION_CODES = [
+  'AMOUNT_EXCEEDS_MAX',
+  'AMOUNT_NOT_POSITIVE',
+  'AMOUNT_NOT_INTEGER',
+  'VALIDITY_EXCEEDS_MAX',
+  'VALIDITY_NOT_POSITIVE',
+  'CONCURRENT_BLOCK_FOR_PAIR',
+  'DEBIT_EXCEEDS_BLOCK',
+  'DEBIT_AFTER_EXPIRY',
+  'DEBIT_AFTER_REVOKE',
+  'DEBIT_BEFORE_BLOCK',
+  'DEBIT_NOT_POSITIVE',
+  'DEBIT_ON_UNKNOWN_BLOCK',
+] as const;
+
+export type ViolationCode = (typeof OC228_VIOLATION_CODES)[number];
 
 export interface Violation {
   readonly code: ViolationCode;

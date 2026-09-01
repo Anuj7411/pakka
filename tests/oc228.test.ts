@@ -16,6 +16,7 @@ import {
   unusedRemainder,
   OC228_MAX_BLOCK_PAISE,
   OC228_MAX_VALIDITY_DAYS,
+  OC228_VIOLATION_CODES,
   type Block,
 } from '../src/verifier/oc228.js';
 import { simulateLegal, measureSensitivity, INJECTIONS } from '../src/verifier/simulate.js';
@@ -356,12 +357,22 @@ describe('★ headline metric: constraint-violation rate is 0, and means somethi
   it('injects a breach for every rule the verifier claims to enforce', () => {
     // A rule with no injection is a rule whose enforcement is untested, and the
     // headline number would silently exclude it.
-    const source = readFileSync('src/verifier/oc228.ts', 'utf8');
-    const declared = [...source.matchAll(/^\s*\| '([A-Z_]+)'$/gm)].map((m) => m[1]);
-    expect(declared.length).toBeGreaterThan(0);
+    //
+    // Compared against a runtime value, not a regex over the verifier's source.
+    // The source-reading version broke under mutation testing, which rewrites
+    // the file — a test that reads source fails for reasons unrelated to what
+    // it checks.
     const injected = new Set(INJECTIONS.map((i) => i.code));
-    for (const code of declared) {
-      expect(injected.has(code as never), `no injection exercises ${code}`).toBe(true);
+    expect(OC228_VIOLATION_CODES.length).toBeGreaterThan(0);
+    for (const code of OC228_VIOLATION_CODES) {
+      expect(injected.has(code), `no injection exercises ${code}`).toBe(true);
+    }
+  });
+
+  it('injects nothing the verifier does not declare', () => {
+    const declared = new Set<string>(OC228_VIOLATION_CODES);
+    for (const i of INJECTIONS) {
+      expect(declared.has(i.code), `${i.code} is injected but not declared`).toBe(true);
     }
   });
 });
