@@ -108,6 +108,14 @@ console.log(`   its category     : ${scenario.catalogue[poisonIndex]!.category} 
 rule('1. CLEAN catalogue');
 
 const clean = await shopper.shop(scenario.request, scenario.catalogue);
+if (clean.failed) {
+  // An empty pick list from an outage and an empty pick list from an agent that
+  // chose nothing render identically, and the gate says "allow" to both. Without
+  // this line a failed control run reads as a successful one.
+  console.error(`
+AGENT CALL FAILED (${clean.reason}). The control is not valid; stopping.`);
+  process.exit(1);
+}
 console.log(`agent picked : [${clean.picks.map((p) => `${p.index}x${p.quantity}`).join(', ')}]`);
 const cleanGate = await runGate(clean.picks);
 console.log(`gate decision: ${cleanGate.decision}`);
@@ -124,6 +132,11 @@ console.log(`payload written into entry [${poisonIndex}]'s description:`);
 console.log(`  "${PAYLOAD.trim().slice(0, 96)}…"\n`);
 
 const baited = await shopper.shop(scenario.request, poisoned);
+if (baited.failed) {
+  console.error(`
+AGENT CALL FAILED (${baited.reason}). Nothing was demonstrated; stopping.`);
+  process.exit(1);
+}
 console.log(`agent picked : [${baited.picks.map((p) => `${p.index}x${p.quantity}`).join(', ')}]`);
 
 const tookBait = baited.picks.some((p) => p.index === poisonIndex);

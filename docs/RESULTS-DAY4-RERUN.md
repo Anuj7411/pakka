@@ -4,8 +4,20 @@ Supersedes the ablation table in `RESULTS-DAY4.md`, which was measured on a
 corpus that no longer exists.
 
 Model `gemini-3.1-flash-lite`, temperature 0, structured output. 160 cases from
-6 mandates, seed 20260829, corpus `sha256:1dcce73b32bb2…` (was
-`sha256:4f3acf4e74b8a…`). **30 provider calls, 261 cache hits, 0 failures.**
+6 mandates, seed 20260829, corpus `sha256:6cbc56f83387a…`.
+**27 provider calls, 263 cache hits, 0 failures.**
+
+> **Re-measured 2026-09-01.** The figures first published here were computed on
+> corpus `sha256:1dcce73b32bb2…`, which no longer exists — the compound-suffix
+> removal and the product-boundary fix (Day 6 testing) changed the pairing again.
+> A test named *"pins a corpus hash"* was asserting only the hash's **shape**, so
+> the corpus moved under the published numbers without failing anything. It now
+> pins the value.
+>
+> The shape of the result is unchanged and every conclusion below still holds.
+> The figures are not: `ITEM_SUBSTITUTION` 38.9% → **27.8%**, hard-tier
+> classification 100% → **92.6%**, combined classification 86.3% → **83.8%**.
+> The tables below are the re-measured ones.
 
 ```
 npx tsx scripts/run-ablation.ts tests/fixtures 6 400 2200 gemini-3.1-flash-lite
@@ -15,11 +27,11 @@ npx tsx scripts/run-ablation.ts tests/fixtures 6 400 2200 gemini-3.1-flash-lite
 
 | | A: deterministic | B: semantic only | C: both |
 |---|---|---|---|
-| Detection | 91.3% | 72.5% | **100.0%** |
-| Classification | 77.5% | 8.8% | **86.3%** |
-| Silent on a divergent cart | 8.8% | 27.5% | **0.0%** |
+| Detection | 92.5% | 92.5% | **100.0%** |
+| Classification | 77.5% | 6.3% | **83.8%** |
+| Silent on a divergent cart | 7.5% | 7.5% | **0.0%** |
 | False positive | **0.0%** | *not measurable* | *not measurable* |
-| Macro across tiers | 77.4% | 8.6% | **86.0%** |
+| Macro across tiers | 77.4% | 6.1% | **83.6%** |
 
 Per class, classification:
 
@@ -29,7 +41,7 @@ Per class, classification:
 | CONSTRAINT_BREACH | 100% | 0% | 100% |
 | QUANTITY_DEVIATION | 100% | 0% | 100% |
 | UNREQUESTED_ADDITION | 100% | 0% | 100% |
-| **ITEM_SUBSTITUTION** | **0%** | **38.9%** | **38.9%** [20–61] |
+| **ITEM_SUBSTITUTION** | **0%** | **27.8%** | **27.8%** [12–51] |
 
 Per tier, classification:
 
@@ -37,21 +49,27 @@ Per tier, classification:
 |---|---|---|
 | easy | 76.0% | 76.0% |
 | medium | 78.6% | 82.1% |
-| hard | 77.8% | **100.0%** |
+| hard | 77.8% | **92.6%** |
 
-The shape is unchanged from the first run and the conclusion holds: the model
-moves exactly one class, and it moves the hard tier from 77.8% to 100%. The
-point estimate for ITEM_SUBSTITUTION fell from 44.4% to 38.9%, which is one case
-out of 18 and sits well inside the interval — not a change worth a story.
+The shape is unchanged across three runs and the conclusion holds: the model
+moves exactly one class, and it moves the hard tier most — 77.8% → 92.6%.
+
+The point estimate for ITEM_SUBSTITUTION has now been 44.4%, 38.9% and 27.8% on
+three corpora, all with intervals that overlap heavily (the current one is
+[12–51]). **n=18 for that class.** The honest reading is that we have bounded it
+loosely somewhere in the twenties-to-forties and cannot say more at this sample
+size; quoting any single figure as *the* number would be false precision.
 
 ## The false-positive rate is withheld, not improved
 
 I set out to fix a 70% false-positive rate by fixing the pairing. **The pairing
-fix did not move it. It is still exactly 70.0%.** That is the useful result, and
-it took looking at the flagged cases to understand why.
+fix did not move it — it stayed at exactly 70.0%.** That is the useful result,
+and it took looking at the flagged cases to understand why.
 
-All 56 flagged conforming cases come from **five distinct (request, product)
-pairs**:
+The harness no longer prints that figure at all (see below), so 70.0% is a
+historical measurement from corpus `sha256:1dcce73b32bb2…`, not a current one.
+The diagnosis it produced is what carries forward. All 56 flagged conforming
+cases on that run came from **five distinct (request, product) pairs**:
 
 | Repeats | Request | Paired product | Model's objection |
 |---|---|---|---|
@@ -126,17 +144,14 @@ Deterministic false positives remain **0.0%** and remain meaningful.
 
 ## Calibration, re-measured
 
-| Confidence | n | Accuracy |
-|---|---|---|
-| 0.9 | 72 | 95.8% |
-| 1.0 | 219 | 36.1% |
+Two distinct values again, ECE **66.7%** — the third consecutive run to find the
+confidence signal degenerate, across three different corpora.
 
-Two distinct values again, ECE 52.1%. The signal is not merely flat, it is
-**inverted** on this run: the verdicts the model marks 1.0 are the ones it gets
-wrong. That accuracy column inherits the label problem above and should not be
-read as a model score — but "two distinct values" does not, and it is the same
-finding as before. The abstention band is gone; nothing here argues for
-bringing it back.
+That finding is **label-independent**: how many distinct values a model emits
+does not depend on whether our conforming labels are right. It is the one
+semantic-layer result here that needs no caveat, and it is why the abstention
+band was removed rather than retuned. Nothing in this run argues for bringing it
+back.
 
 ## Note on an unrelated defect found while checking this
 

@@ -2,16 +2,32 @@
 
 Full corpus (1,000 products, 12,251 instructions), seed 20260829, 60 mandates,
 **1,626 cases: 813 divergent, 813 matched conforming.** Corpus
-`sha256:e97eb24b237dc95…`. Reproduce with `npx tsx scripts/run-eval.ts data`.
+`sha256:bed6c5ebc2a3d1c…`. Reproduce with `npx tsx scripts/run-eval.ts data`.
+
+> **Re-measured 2026-09-01.** The numbers first published here were computed on
+> corpus `sha256:e97eb24b237dc95…`, which no longer exists: the head-noun pairing
+> gate (Day 5) and the removal of the compound-suffix rule (Day 6 testing) each
+> changed which instruction–product pairs the generator produces.
+>
+> Nothing caught that. `tests/generator.test.ts` had a test named *"pins a corpus
+> hash"* which asserted only that the hash **matched a regex** — it pinned the
+> shape and not the value, so the corpus moved twice under every published
+> figure and the suite stayed green. The test now pins the value, and changing
+> pairing fails the build.
+>
+> The re-measured figures below are the current ones. The drift was small and
+> the conclusions are unchanged, which is luck rather than process: detection
+> 91.0% → 92.0%, silent 9.0% → 8.0%, and CONSTRAINT_BREACH / UNREQUESTED_ADDITION
+> swapped places at 100% / 99.4%.
 
 ## A6 answered: how much can pure code decide?
 
 | Class | Recall | 95% CI | n |
 |---|---|---|---|
 | SCOPE_VIOLATION | **100.0%** | 98–100 | 180 |
-| CONSTRAINT_BREACH | **100.0%** | 98–100 | 180 |
+| UNREQUESTED_ADDITION | **100.0%** | 98–100 | 180 |
 | QUANTITY_DEVIATION | **100.0%** | 96–100 | 93 |
-| UNREQUESTED_ADDITION | **99.4%** | 97–100 | 180 |
+| CONSTRAINT_BREACH | **99.4%** | 97–100 | 180 |
 | **ITEM_SUBSTITUTION** | **0.0%** | 0–2 | 180 |
 
 **Four of five classes are decided by code, with no model and no false
@@ -25,11 +41,11 @@ predicted it, and the harness confirmed it.
 
 | | |
 |---|---|
-| Detection (flagged the cart at all) | **91.0%** [89–93] |
+| Detection (flagged the cart at all) | **92.0%** [90–94] |
 | Classification (right line AND right class) | **77.7%** [75–80] |
 | **False positive rate** | **0.0%** [0–0], n=813 |
-| Precision, at 50% prevalence | **100.0%** [99–100] |
-| Silent on a divergent cart | 9.0% [7–11] |
+| Precision, at 50% prevalence | **100.0%** [99–100], n=748 |
+| Silent on a divergent cart | 8.0% [6–10] |
 | Macro across tiers | **77.7%** |
 | Macro across class × tier | **79.9%** |
 
@@ -43,7 +59,7 @@ coin-flip scores 50% precision; the number only means something next to it.
 | neverFlag | 0.0% | 0.0% | 0.0% |
 | alwaysFlag | 100.0% | 22.1% | **100.0%** |
 | biggestCart (leakage probe) | 38.3% | 13.7% | 19.8% |
-| **Deterministic** | **91.0%** | **77.7%** | **0.0%** |
+| **Deterministic** | **92.0%** | **77.7%** | **0.0%** |
 
 `alwaysFlag` scores perfect detection and is worthless. It is here so that a
 detection number is never read without its false-positive rate.
@@ -93,7 +109,7 @@ most one line) fixed it:
 | Classification | 65.3% | **77.7%** |
 | False positives | 3.7% | **0.0%** |
 | Precision | 95.8% | **100%** |
-| UNREQUESTED_ADDITION | 44.4% | **99.4%** |
+| UNREQUESTED_ADDITION | 44.4% | **100.0%** |
 
 Unassigned lines *are* the definition of `UNREQUESTED_ADDITION`, which is why
 that class jumped: the fix did not add a rule, it made the existing one correct.

@@ -153,7 +153,17 @@ describe.skipIf(!hasData)('generator: corpus', () => {
   });
 
   it('pins a corpus hash', () => {
-    expect(corpus.generatedWith.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    // This test was named "pins a corpus hash" while asserting only its SHAPE.
+    // It pinned nothing, and two changes to pairing silently altered the corpus
+    // underneath every published result — the hashes quoted in RESULTS-DAY3.md
+    // and RESULTS-DAY4-RERUN.md stopped reproducing and no test noticed.
+    //
+    // Now it pins the value. Changing the generator, the pairing or the
+    // taxonomy will fail here, which is the point: the corpus cannot move
+    // without someone deciding to re-run the evaluations and update the docs.
+    expect(corpus.generatedWith.hash).toBe(
+      'sha256:1d11ca93f91e840a35a6dc2008c538ec1ce0ee96c77ecc13c51fa7139eaf35bc',
+    );
   });
 
   it('produces a matched conforming negative for EVERY divergent case', () => {
