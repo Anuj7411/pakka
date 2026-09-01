@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conformance Gate — live checkout</title>
+    <style>
+      :root {
+        --bg: #0e1116;
+        --panel: #161b22;
+        --line: #2a323d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --ok: #3fb950;
+        --warn: #d29922;
+        --bad: #f85149;
+        --accent: #58a6ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 2rem 1rem 4rem;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 720px; margin: 0 auto; }
+      h1 { font-size: 1.35rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+      .sub { color: var(--muted); margin: 0 0 1.75rem; font-size: 0.92rem; }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 1.1rem 1.25rem;
+        margin-bottom: 1rem;
+      }
+      .panel h2 {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--muted);
+        margin: 0 0 0.85rem;
+        font-weight: 600;
+      }
+      dl { display: grid; grid-template-columns: 9.5rem 1fr; gap: 0.45rem 1rem; margin: 0; }
+      dt { color: var(--muted); font-size: 0.86rem; }
+      dd {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+        font-size: 0.82rem;
+        word-break: break-all;
+      }
+      .pill {
+        display: inline-block;
+        padding: 0.12rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+      .pill.allow { background: rgba(63, 185, 80, 0.16); color: var(--ok); }
+      .pill.escalate { background: rgba(210, 153, 34, 0.16); color: var(--warn); }
+      .pill.block { background: rgba(248, 81, 73, 0.16); color: var(--bad); }
+      button {
+        width: 100%;
+        padding: 0.75rem;
+        font: inherit;
+        font-weight: 600;
+        color: #06121f;
+        background: var(--accent);
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button:hover { filter: brightness(1.08); }
+      .cards { font-size: 0.86rem; color: var(--muted); }
+      .cards code {
+        color: var(--text);
+        background: #0b0f14;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 0.1rem 0.4rem;
+        font-size: 0.82rem;
+      }
+      .cards li { margin-bottom: 0.4rem; }
+      #outcome:empty { display: none; }
+      #outcome {
+        margin-top: 1rem;
+        padding: 1rem 1.25rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.83rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #outcome.bad { border-color: rgba(248, 81, 73, 0.5); }
+      #outcome.good { border-color: rgba(63, 185, 80, 0.5); }
+      .note { color: var(--muted); font-size: 0.82rem; margin-top: 1.5rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Instruction–cart conformance gate</h1>
+      <p class="sub">
+        Test mode. The gate ran <strong>before</strong> this order existed; the
+        certificate below was written to the audit chain first.
+      </p>
+
+      <section class="panel">
+        <h2>Gate decision</h2>
+        <dl>
+          <dt>Decision</dt>
+          <dd><span class="pill __DECISION__">__DECISION__</span></dd>
+          <dt>Certificate</dt>
+          <dd>__CERT_ID__</dd>
+          <dt>Certificate hash</dt>
+          <dd>__CERT_HASH__</dd>
+          <dt>Cart hash</dt>
+          <dd>__CART_HASH__</dd>
+          <dt>Order</dt>
+          <dd>__ORDER_ID__</dd>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Pay</h2>
+        <button id="pay">Pay ₹1,299.00</button>
+        <div id="outcome"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Razorpay test cards</h2>
+        <ul class="cards">
+          <li><code>4111 1111 1111 1111</code> — succeeds</li>
+          <li><code>4100 2800 0009 0000</code> — fails with <code>payment_timed_out</code></li>
+        </ul>
+        <p class="cards" style="margin-bottom: 0">
+          Any future expiry, any CVV. These are Razorpay's published test numbers;
+          no money can move in test mode.
+        </p>
+      </section>
+
+      <p class="note">
+        Whatever the payment does, the certificate and the audit chain are already
+        written and independently verifiable — <code>/state</code> returns them as
+        JSON. A failed payment is not a failed audit.
+      </p>
+    </main>
+
+    <!--
+      No Subresource Integrity hash here, deliberately. Razorpay ships
+      checkout.js as a continuously-updated payment SDK and publishes no SRI
+      digest for it; pinning one would break checkout on their next release.
+      The trade is real and is the same one every Razorpay integration makes:
+      we trust checkout.razorpay.com because it IS the payment provider. It
+      cannot reach the gate anyway — the decision, the certificate and the
+      audit record were all written server-side before this page was served.
+    -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+      const out = document.getElementById('outcome');
+
+      function show(kind, lines) {
+        out.className = kind;
+        out.textContent = lines.join('\n');
+      }
+
+      document.getElementById('pay').addEventListener('click', () => {
+        const rzp = new Razorpay({
+          key: '__KEY_ID__',
+          order_id: '__ORDER_ID__',
+          amount: __AMOUNT__,
+          currency: 'INR',
+          name: 'Conformance Gate demo',
+          description: 'Wireless Bluetooth Headphones, Over-Ear',
+          notes: { conformance_certificate_id: '__CERT_ID__' },
+          handler: (r) =>
+            show('good', [
+              'PAYMENT SUCCEEDED',
+              'payment_id : ' + r.razorpay_payment_id,
+              'order_id   : ' + r.razorpay_order_id,
+              '',
+              'The certificate is unchanged and the chain still validates.',
+            ]),
+          modal: {
+            ondismiss: () =>
+              show('', [
+                'Checkout dismissed. No payment attempted.',
+                'The certificate and audit record still stand.',
+              ]),
+          },
+        });
+
+        // The path that matters: a declined or timed-out payment must leave the
+        // audit trail intact and legible, not swallowed by an error toast.
+        rzp.on('payment.failed', (e) => {
+          const d = e.error || {};
+          show('bad', [
+            'PAYMENT FAILED — handled, not swallowed',
+            'code        : ' + (d.code || '(none)'),
+            'reason      : ' + (d.reason || '(none)'),
+            'step        : ' + (d.step || '(none)'),
+            'source      : ' + (d.source || '(none)'),
+            'description : ' + (d.description || '(none)'),
+            'payment_id  : ' + ((d.metadata && d.metadata.payment_id) || '(none)'),
+            '',
+            'Certificate __CERT_ID__ is untouched.',
+            'The cart that was authorised is still the cart that was certified.',
+            'Fetch /state to verify the chain independently.',
+          ]);
+        });
+
+        rzp.open();
+      });
+    </script>
+  </body>
+</html>
