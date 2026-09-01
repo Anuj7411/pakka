@@ -7,7 +7,7 @@
  * someone who cannot re-run our code.
  */
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -501,5 +501,141 @@ describe('security audit regressions (2026-08-31)', () => {
     const example = readFileSync('.env.example', 'utf8');
     expect(example).toContain('CONFORMANCE_SIGNING_KEY');
     expect(example).toMatch(/CONFORMANCE_SIGNING_KEY=\s*$/m); // present, and empty
+  });
+});
+
+describe('fail-closed paths', () => {
+  it('refuses a public key of the wrong length', () => {
+    expect(() => verifierFromPublicKey(Buffer.from('short').toString('base64'))).toThrow(
+      ConfigError,
+    );
+    expect(() => verifierFromPublicKey('')).toThrow(/got 0/);
+  });
+
+  it('reports a body that cannot be canonicalised as malformed, not as a bad signature', () => {
+    // canonicalise refuses NaN and Infinity. Such a body cannot have been
+    // signed by us, and calling it "bad signature" would point an investigator
+    // at tampering when the record is simply not a certificate.
+    const broken = { ...issue(), priceMinor: Number.NaN } as unknown as Certificate;
+    expect(verifyCertificate(broken, verifier)).toEqual({ ok: false, reason: 'malformed' });
+  });
+
+  it('never throws on a hostile signature, whatever the bytes', () => {
+    const cert = issue();
+    const hostile = ['', '!!!!', 'AAAA', 'A'.repeat(10_000), '\u0000\u0000'];
+    for (const signature of hostile) {
+      expect(() => verifyCertificate({ ...cert, signature }, verifier)).not.toThrow();
+      expect(verifyCertificate({ ...cert, signature }, verifier).ok).toBe(false);
+    }
+  });
+
+  it('refuses to append onto a head it cannot read', () => {
+    // Appending onto an unreadable last line would silently start a second
+    // chain inside the same file.
+    const dir = tmpDir();
+    const path = join(dir, 'audit.jsonl');
+    try {
+      writeFileSync(path, `${JSON.stringify(issue())}\n{ truncated\n`, 'utf8');
+      expect(() => new AuditLog(path)).toThrow(AuditLogError);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('treats a file of blank lines as an empty log', () => {
+    const dir = tmpDir();
+    const path = join(dir, 'audit.jsonl');
+    try {
+      writeFileSync(path, '\n\n   \n', 'utf8');
+      const log = new AuditLog(path);
+      expect(log.head()).toBe(GENESIS_HASH);
+      expect(log.length).toBe(0);
+      expect(() => log.append(issue({ prevHash: GENESIS_HASH }))).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('mutation-surfaced gaps: assertions that were too shallow', () => {
+  it('distinguishes a MALFORMED signature from a wrong one', () => {
+    // The guard is `typeof signature !== 'string' || signature === ''`.
+    // Only the empty-string half was exercised, so flipping || to && survived:
+    // a non-string signature would have been reported as tampering rather than
+    // as a record that is not a certificate at all.
+    const cert = issue();
+    expect(verifyCertificate({ ...cert, signature: '' }, verifier).reason).toBe('malformed');
+    for (const signature of [null, undefined, 42, {}, []]) {
+      const got = verifyCertificate({ ...cert, signature } as unknown as Certificate, verifier);
+      expect(got.reason, `signature ${String(signature)}`).toBe('malformed');
+    }
+  });
+
+  it('accepts a public key of exactly 32 bytes and nothing else', () => {
+    // Inverting the length check survived: a correct key would have been
+    // rejected and a malformed one accepted, and no test pinned both sides.
+    const good = generateSigner().publicKeyBase64();
+    expect(() => verifierFromPublicKey(good)).not.toThrow();
+    expect(Buffer.from(good, 'base64')).toHaveLength(32);
+    for (const n of [0, 1, 31, 33, 64]) {
+      expect(() => verifierFromPublicKey(randomBytes(n).toString('base64')), `${n} bytes`).toThrow(
+        ConfigError,
+      );
+    }
+  });
+
+  it('returns a usable signer, not merely an object', () => {
+    // `ObjectLiteral -> {}` mutants survived, meaning nothing asserted the
+    // shape a signer must actually have.
+    const s = generateSigner();
+    expect(s.keyId).toMatch(/^[0-9a-f]{16}$/);
+    expect(Buffer.from(s.publicKeyBase64(), 'base64')).toHaveLength(32);
+    const sig = s.sign('hello');
+    expect(Buffer.from(sig, 'base64')).toHaveLength(64); // Ed25519 signature size
+    expect(verifierFromPublicKey(s.publicKeyBase64()).verify('hello', sig)).toBe(true);
+    expect(verifierFromPublicKey(s.publicKeyBase64()).verify('hello!', sig)).toBe(false);
+  });
+
+  it('stamps a real timestamp and a real nonce by default', () => {
+    // The defaults are injected functions; `() => undefined` survived because
+    // nothing looked at what they produced.
+    const cert = issueCertificate(
+      { mandate, cart, decision: 'allow', violations: [], degraded: false, prevHash: GENESIS_HASH },
+      signer,
+    );
+    expect(cert.issued_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(Number.isNaN(Date.parse(cert.issued_at))).toBe(false);
+    expect(cert.nonce).toMatch(/^[0-9a-f]{32}$/);
+    expect(cert.certificate_id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('refuses to append when the head line was corrupted after construction', () => {
+    // #headOnDisk has its own catch. It is reachable only when the file changes
+    // AFTER the constructor validated it — which is exactly the case that
+    // matters, because appending onto an unreadable head would silently start a
+    // second chain inside one file.
+    const dir = tmpDir();
+    const path = join(dir, 'audit.jsonl');
+    try {
+      const log = new AuditLog(path);
+      log.append(issue({ prevHash: GENESIS_HASH }));
+      appendFileSync(path, '{ not json\n', 'utf8');
+      expect(() => log.head()).toThrow(AuditLogError);
+      expect(() => log.append(issue({ prevHash: GENESIS_HASH }))).toThrow(AuditLogError);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('names the failing line number when the log is unreadable', () => {
+    const dir = tmpDir();
+    const path = join(dir, 'audit.jsonl');
+    try {
+      const lines = [JSON.stringify(issue()), JSON.stringify(issue()), 'broken'];
+      writeFileSync(path, `${lines.join('\n')}\n`, 'utf8');
+      expect(() => AuditLog.read(path)).toThrow(/line 3/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

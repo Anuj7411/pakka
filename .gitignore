@@ -16,3 +16,6 @@ reports/
 # Security reports stay local
 .gstack/
 llm-cache/
+
+# Demo audit logs
+audit/
