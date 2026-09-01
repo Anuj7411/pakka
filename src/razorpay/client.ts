@@ -96,19 +96,35 @@ export function assertNotesFit(notes: Readonly<Record<string, string>>): void {
   }
 }
 
-export function createRazorpayClient(opts: { timeoutMs?: number } = {}): RazorpayClient {
+/**
+ * The subset of `fetch` this client uses.
+ *
+ * Injectable so the error paths are testable. An HTTP client for a payments API
+ * whose timeout, non-JSON and HTTP-error branches have never run is a client
+ * whose failure modes are guesses — and those branches are the ones that decide
+ * whether a failed order looks like a failed order or like a successful one.
+ */
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
+export interface ClientOptions {
+  readonly timeoutMs?: number;
+  readonly fetchImpl?: FetchLike;
+}
+
+export function createRazorpayClient(opts: ClientOptions = {}): RazorpayClient {
   // Read once, at construction: a credential that changes under a running
   // process is a configuration bug, not a feature.
   const { keyId, keySecret } = razorpayCredentials();
   const authorization = `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}`;
   const timeoutMs = opts.timeoutMs ?? 15_000;
+  const doFetch: FetchLike = opts.fetchImpl ?? ((url, init) => fetch(url, init));
 
   async function call(path: string, init: RequestInit = {}): Promise<unknown> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
     try {
-      response = await fetch(`${API_BASE}${path}`, {
+      response = await doFetch(`${API_BASE}${path}`, {
         ...init,
         signal: controller.signal,
         headers: { Authorization: authorization, 'Content-Type': 'application/json' },

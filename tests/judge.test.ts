@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { judgeCart } from '../src/semantic/judge.js';
-import { assessCart } from '../src/deterministic/checkers.js';
+import { assessCart, assignLines } from '../src/deterministic/checkers.js';
 import { SOURCE_DECISION } from '../src/gate/compose.js';
 import type { JudgeVerdict } from '../src/semantic/prompt.js';
 import type { Provider, ProviderRequest } from '../src/semantic/provider.js';
@@ -247,5 +247,45 @@ describe('judgeCart: what reaches the provider', () => {
     expect(provider.requests).toHaveLength(0);
     expect(result.findings).toHaveLength(0);
     expect(result.degraded).toBe(false);
+  });
+});
+
+describe('the invariant that keeps the unassigned-line guard unreachable', () => {
+  it('every unassigned line is already flagged by the deterministic layer', () => {
+    // judge.ts has a `if (!assigned) continue` branch that coverage shows never
+    // runs. It never runs because of THIS invariant, which belongs to another
+    // module. Pinned here so a change over there fails a test rather than
+    // quietly turning that guard into live code.
+    const m = mandate([item('i0', 'wireless bluetooth headphones')]);
+    const carts: Cart[] = [
+      cart([line('l0', 'wireless bluetooth headphones'), line('l1', 'zzz qqq www')]),
+      cart([line('l0', 'nothing in common here')]),
+      cart([line('l0', 'zzz'), line('l1', 'qqq'), line('l2', 'www')]),
+    ];
+    for (const c of carts) {
+      const assessment = assessCart(c, m);
+      const flagged = new Set(assessment.violations.map((v) => v.lineId));
+      const assignment = assignLines(c, m);
+      for (const l of c.lines) {
+        const assigned = assignment.get(l.lineId) != null;
+        if (!assigned) {
+          expect(flagged.has(l.lineId), `${c.cartId}/${l.lineId} unassigned but unflagged`).toBe(
+            true,
+          );
+        }
+      }
+    }
+  });
+
+  it('holds when the mandate asks for nothing at all', () => {
+    const empty: Mandate = {
+      mandateId: 'm-empty',
+      text: '',
+      items: [],
+      authorisedCategory: 'Electronics',
+    };
+    const c = cart([line('l0', 'anything at all')]);
+    const flagged = new Set(assessCart(c, empty).violations.map((v) => v.lineId));
+    expect(flagged.has('l0')).toBe(true);
   });
 });

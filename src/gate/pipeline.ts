@@ -31,8 +31,11 @@ import {
   POLICY_VERSION,
   type Certificate,
   type CertificateViolation,
+  type CertificateReserve,
 } from '../cert/certificate.js';
 import { hashOf } from '../normalise/canonical.js';
+import { sizeReserve, SIZER_POLICY_VERSION } from '../sizer/reserve.js';
+import { verifyBlock, OC228_VERIFIER_VERSION } from '../verifier/oc228.js';
 import type { Signer } from '../cert/signing.js';
 import type { AuditLog } from '../audit/log.js';
 import type { Provider } from '../semantic/provider.js';
@@ -63,6 +66,67 @@ export interface EvaluateOptions {
   readonly signer: Signer;
   readonly log: AuditLog;
   readonly model?: { readonly id: string; readonly temperature: number } | null;
+  /**
+   * Size a reserve for this cart and record the independent OC-228 proof.
+   *
+   * Off by default. A reserve is only meaningful for a UPI Reserve Pay flow,
+   * and computing one for a plain card order would put a number on the
+   * certificate that nothing acts on.
+   */
+  readonly reserve?: { readonly merchantId: string; readonly customerId: string; readonly validityDays?: number } | null;
+}
+
+/**
+ * Size a reserve, then have the independent verifier judge it.
+ *
+ * Clark-Wilson E3 in one function: `sizeReserve` proposes, `verifyBlock`
+ * disposes, and they share no code. The certificate carries both the number and
+ * the judgement, so a reader need not trust either module on its own.
+ *
+ * A verifier rejection here is an internal inconsistency — our own sizer
+ * proposing something unlawful — so it is recorded as a fail rather than
+ * silently corrected. Correcting it would collapse the separation into one
+ * module that grades its own work.
+ */
+function buildReserve(
+  cart: Cart,
+  mandate: Mandate,
+  ctx: { merchantId: string; customerId: string; validityDays?: number },
+): { reserve: CertificateReserve; lawful: boolean } {
+  const proposal = sizeReserve(
+    cart,
+    mandate,
+    ctx.validityDays === undefined ? {} : { requestedValidityDays: ctx.validityDays },
+  );
+
+  // An unfundable cart has no block to check; there is nothing unlawful about
+  // declining to block, so it passes with no violations.
+  const violations = proposal.fundable && proposal.amountPaise > 0
+    ? verifyBlock({
+        blockId: 'proposed',
+        merchantId: ctx.merchantId,
+        customerId: ctx.customerId,
+        amountPaise: proposal.amountPaise,
+        validityDays: proposal.validityDays,
+        createdOnDay: 0,
+      })
+    : [];
+
+  return {
+    lawful: violations.length === 0,
+    reserve: {
+      amount_paise: proposal.amountPaise,
+      validity_days: proposal.validityDays,
+      rationale_code: proposal.rationale,
+      fundable: proposal.fundable,
+      sizer_policy_version: SIZER_POLICY_VERSION,
+      constraint_proof: {
+        oc228: violations.length === 0 ? 'pass' : 'fail',
+        verifier_version: OC228_VERIFIER_VERSION,
+        violations: violations.map((v) => v.code),
+      },
+    },
+  };
 }
 
 /**
@@ -83,7 +147,23 @@ export async function evaluate(opts: EvaluateOptions): Promise<Certified> {
     })),
     ...semantic.findings,
   ];
-  const composed = compose(findings, semantic.degraded);
+  const sized = opts.reserve ? buildReserve(opts.cart, opts.mandate, opts.reserve) : null;
+
+  // A reserve our own verifier rejects is an internal inconsistency, and it
+  // must not pass silently. It cannot lower the decision — nothing can — it can
+  // only raise it, which is the same lattice rule the model obeys.
+  const reserveFindings: Finding[] =
+    sized && !sized.lawful
+      ? [
+          {
+            lineId: '*',
+            source: 'deterministic' as const,
+            detail: `reserve proposal violates OC-228: ${sized.reserve.constraint_proof.violations.join(', ')}`,
+          },
+        ]
+      : [];
+
+  const composed = compose([...findings, ...reserveFindings], semantic.degraded);
 
   const violations: CertificateViolation[] = [
     ...assessment.violations.map((v) => ({
@@ -108,6 +188,7 @@ export async function evaluate(opts: EvaluateOptions): Promise<Certified> {
       violations,
       degraded: composed.degraded,
       model: opts.model ?? null,
+      reserve: sized?.reserve ?? null,
       prevHash: opts.log.head(),
     },
     opts.signer,

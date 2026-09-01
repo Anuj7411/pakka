@@ -20,7 +20,9 @@ import {
 } from '../src/gate/pipeline.js';
 import { AuditLog } from '../src/audit/log.js';
 import { generateSigner, verifierFromPublicKey } from '../src/cert/signing.js';
-import { certificateHash, POLICY_VERSION } from '../src/cert/certificate.js';
+import { certificateHash, POLICY_VERSION, verifyCertificate } from '../src/cert/certificate.js';
+import { SIZER_POLICY_VERSION } from '../src/sizer/reserve.js';
+import { OC228_VERIFIER_VERSION } from '../src/verifier/oc228.js';
 import { assertNotesFit, RazorpayError, type Order, type RazorpayClient, type CreateOrderInput } from '../src/razorpay/client.js';
 import type { Provider } from '../src/semantic/provider.js';
 import type { Cart, CartLine, Mandate, MandateItem } from '../src/corpus/types.js';
@@ -453,5 +455,104 @@ describe('cart to line items', () => {
   it('is empty for an empty cart rather than throwing', () => {
     expect(toLineItems({ cartId: 'c', lines: [] })).toEqual([]);
     expect(lineItemsTotal({ cartId: 'c', lines: [] })).toBe(0);
+  });
+});
+
+describe('reserve: the sizer proposes, the verifier disposes', () => {
+  const ctx = { merchantId: 'merchant-1', customerId: 'customer-1' };
+
+  it('computes no reserve unless asked', async () => {
+    // A reserve on a plain card order would be a number on the certificate that
+    // nothing acts on.
+    await withLog(async (log) => {
+      const c = await evaluate({ mandate, cart: cleanCart, provider: HONEST, signer, log });
+      expect(c.certificate.reserve).toBeNull();
+    });
+  });
+
+  it('records the amount and an independent OC-228 proof', async () => {
+    await withLog(async (log) => {
+      const c = await evaluate({
+        mandate,
+        cart: cleanCart,
+        provider: HONEST,
+        signer,
+        log,
+        reserve: ctx,
+      });
+      const r = c.certificate.reserve!;
+      expect(r.amount_paise).toBe(136_395); // 129900 + 5% headroom, rounded up
+      expect(r.rationale_code).toBe('CART_PLUS_HEADROOM');
+      expect(r.fundable).toBe(true);
+      expect(r.constraint_proof.oc228).toBe('pass');
+      expect(r.constraint_proof.violations).toEqual([]);
+      // Both versions recorded, because the number and the judgement on it come
+      // from different modules.
+      expect(r.sizer_policy_version).toBe(SIZER_POLICY_VERSION);
+      expect(r.constraint_proof.verifier_version).toBe(OC228_VERIFIER_VERSION);
+    });
+  });
+
+  it('reports an unfundable cart as unfundable, and that is not a violation', async () => {
+    // Declining to block is lawful. Blocking the maximum and failing at debit
+    // time would not be.
+    await withLog(async (log) => {
+      const huge: Cart = {
+        cartId: 'c-huge',
+        lines: [line('l0', 'bluetooth headphones', { priceMinor: 50_000_00 })],
+      };
+      const c = await evaluate({
+        mandate,
+        cart: huge,
+        provider: HONEST,
+        signer,
+        log,
+        reserve: ctx,
+      });
+      const r = c.certificate.reserve!;
+      expect(r.fundable).toBe(false);
+      expect(r.amount_paise).toBe(0);
+      expect(r.rationale_code).toBe('CART_EXCEEDS_MAX_BLOCK');
+      expect(r.constraint_proof.oc228).toBe('pass');
+    });
+  });
+
+  it('the reserve is inside the signature, so it cannot be edited after the fact', async () => {
+    await withLog(async (log) => {
+      const c = await evaluate({
+        mandate,
+        cart: cleanCart,
+        provider: HONEST,
+        signer,
+        log,
+        reserve: ctx,
+      });
+      const inflated = {
+        ...c.certificate,
+        reserve: { ...c.certificate.reserve!, amount_paise: 1_000_000 },
+      };
+      expect(verifyCertificate(inflated, verifier).ok).toBe(false);
+    });
+  });
+
+  it('never proposes a reserve its own verifier rejects', async () => {
+    // The pipeline has a branch that raises the decision when the verifier
+    // rejects the sizer. It is defensive: the two modules are written to agree,
+    // and simulateLegal checks that at scale over thousands of sequences. This
+    // pins it at the pipeline level too, across the price range where the
+    // ceiling and the headroom interact.
+    await withLog(async (log) => {
+      for (const priceMinor of [1, 100, 950_00, 999_99, 1_000_00, 9_500_00, 9_999_99, 10_000_00]) {
+        const c = await evaluate({
+          mandate,
+          cart: { cartId: `c-${priceMinor}`, lines: [line('l0', 'bluetooth headphones', { priceMinor })] },
+          provider: HONEST,
+          signer,
+          log,
+          reserve: ctx,
+        });
+        expect(c.certificate.reserve!.constraint_proof.oc228, `at ${priceMinor} paise`).toBe('pass');
+      }
+    });
   });
 });

@@ -66,9 +66,17 @@ export async function judgeCart(
 
     const assigned = assignment.get(line.lineId);
     if (!assigned) {
-      // Unassigned lines are already UNREQUESTED_ADDITION deterministically.
-      // If we reach here the deterministic layer declined to say so, and the
-      // model has no request to compare against either.
+      // Currently UNREACHABLE, and deliberately kept.
+      //
+      // Every unassigned line is flagged UNREQUESTED_ADDITION by the
+      // deterministic layer, so `alreadyFlagged` catches it above. This guard
+      // exists because that is an invariant of another module, not of this one:
+      // if the deterministic layer ever returns `undecidable` for an unassigned
+      // line, `assigned` becomes undefined here and the alternative to this
+      // branch is a non-null assertion that throws in production.
+      //
+      // tests/judge.test.ts pins the invariant, so if it breaks the test says
+      // so rather than this line silently starting to matter.
       continue;
     }
 

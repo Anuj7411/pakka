@@ -62,6 +62,28 @@ export const POLICY_VERSION = hashOf({
   sourceDecision: SOURCE_DECISION,
 });
 
+/**
+ * The reserve, and the independent proof that it is lawful.
+ *
+ * `constraint_proof` is the output of `src/verifier/oc228.ts`, which shares no
+ * code with the sizer that produced `amount_paise`. Recording both means a
+ * reader does not have to trust either module: the amount and the judgement on
+ * it come from different places, and the certificate says so.
+ */
+export interface CertificateReserve {
+  readonly amount_paise: number;
+  readonly validity_days: number;
+  readonly rationale_code: string;
+  readonly fundable: boolean;
+  readonly sizer_policy_version: string;
+  readonly constraint_proof: {
+    readonly oc228: 'pass' | 'fail';
+    readonly verifier_version: string;
+    /** Violation codes, empty on a pass. Present so a fail can be read. */
+    readonly violations: readonly string[];
+  };
+}
+
 export interface CertificateViolation {
   readonly lineId: string;
   readonly class: string | null;
@@ -84,8 +106,12 @@ export interface CertificateBody {
   readonly policy_version: string;
   /** Null when no model was consulted, which is a different claim from "a model said nothing". */
   readonly model: { readonly id: string; readonly temperature: number } | null;
-  /** Day 7 fills this. Explicitly null, not absent: "no reserve computed" is a statement. */
-  readonly reserve: null;
+  /**
+   * Null when no reserve was computed, which is a different statement from a
+   * reserve of zero. Widened from `null` in Day 7; certificates issued before
+   * that still verify, because they carry an explicit null either way.
+   */
+  readonly reserve: CertificateReserve | null;
   readonly issued_at: string;
   /** Replay protection: two identical decisions are still two distinct records. */
   readonly nonce: string;
@@ -106,6 +132,7 @@ export interface IssueInput {
   readonly degraded: boolean;
   readonly model?: { readonly id: string; readonly temperature: number } | null;
   readonly orderId?: string | null;
+  readonly reserve?: CertificateReserve | null;
   readonly prevHash: string;
   /** Injectable so tests are deterministic; defaults to real entropy and clock. */
   readonly now?: () => string;
@@ -130,7 +157,7 @@ export function issueCertificate(input: IssueInput, signer: Signer): Certificate
     degraded: input.degraded,
     policy_version: POLICY_VERSION,
     model: input.model ?? null,
-    reserve: null,
+    reserve: input.reserve ?? null,
     issued_at: (input.now ?? (() => new Date().toISOString()))(),
     nonce: (input.newNonce ?? (() => randomBytes(16).toString('hex')))(),
     prev_hash: input.prevHash,
