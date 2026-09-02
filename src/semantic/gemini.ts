@@ -60,9 +60,19 @@ export function createGeminiProvider(opts: GeminiOptions = {}): Provider {
         },
       };
 
-      // LAST GATE before egress. The allowlist in redact.ts should already make
-      // this impossible; this catches a refactor that reintroduces a field by
-      // another path. Checking the serialised payload catches nesting too.
+      // LAST GATE before egress — and, deliberately, one that cannot fire from
+      // this function's own arguments.
+      //
+      // containsForbiddenField matches a name in UNESCAPED quotes, i.e. a real
+      // JSON key. `req.system` and `req.user` become string values, so their
+      // quotes are escaped and a product legitimately named "Address Book" is
+      // not a false alarm. That is the right trade: refusing honest catalogue
+      // text would break the gate for everyone.
+      //
+      // What remains is a tripwire for a REFACTOR that puts a personal-data
+      // field into the body shape. tests/gemini.test.ts pins the invariant it
+      // protects — the exact keys this body carries — so adding one is a
+      // visible, failing change rather than a silent egress.
       const leaked = containsForbiddenField(body);
       if (leaked !== null) {
         throw new ProviderError(
