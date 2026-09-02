@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conformance Gate</title>
+    <style>
+      :root {
+        --bg: #0b0e13;
+        --panel: #141920;
+        --panel-2: #1b212a;
+        --line: #262e3a;
+        --text: #e8eef5;
+        --muted: #8b97a8;
+        --dim: #5d6878;
+        --ok: #3fb950;
+        --warn: #d9a441;
+        --bad: #f0564a;
+        --accent: #5aa9ff;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        padding: 1.1rem 1.5rem;
+        display: flex;
+        align-items: baseline;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      header h1 { font-size: 1.05rem; margin: 0; letter-spacing: -0.01em; }
+      header .tag {
+        font-size: 0.72rem;
+        color: var(--muted);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.1rem 0.6rem;
+      }
+      header p { margin: 0; color: var(--muted); font-size: 0.85rem; flex: 1 1 100%; }
+      main {
+        display: grid;
+        grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.35fr);
+        gap: 1rem;
+        padding: 1.25rem 1.5rem 3rem;
+        max-width: 1500px;
+        margin: 0 auto;
+        align-items: start;
+      }
+      @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      section > h2 {
+        margin: 0;
+        padding: 0.65rem 1rem;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.11em;
+        color: var(--muted);
+        font-weight: 600;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel-2);
+      }
+      .body { padding: 1rem; }
+      .stack > * + * { margin-top: 1rem; }
+
+      .req { font-size: 1rem; line-height: 1.45; }
+      .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.7rem; }
+      .chip {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 5px;
+        background: #0e141c;
+        border: 1px solid var(--line);
+        color: var(--muted);
+      }
+      .chip b { color: var(--text); font-weight: 600; }
+
+      .controls { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+      button {
+        font: inherit;
+        font-weight: 600;
+        font-size: 0.86rem;
+        padding: 0.6rem 0.95rem;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        color: var(--text);
+        cursor: pointer;
+        transition: filter 0.12s;
+      }
+      button:hover:not(:disabled) { filter: brightness(1.25); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button.primary { background: var(--accent); color: #071018; border-color: transparent; }
+      button.danger { background: #3a1714; color: #ffb4ac; border-color: #58201b; }
+
+      table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+      th {
+        text-align: left;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--dim);
+        font-weight: 600;
+        padding: 0 0.5rem 0.4rem;
+      }
+      td { padding: 0.42rem 0.5rem; border-top: 1px solid var(--line); vertical-align: top; }
+      tr.correct td { background: rgba(63, 185, 80, 0.07); }
+      tr.poisoned td { background: rgba(240, 86, 74, 0.09); }
+      tr.picked td { box-shadow: inset 3px 0 0 var(--accent); }
+      .idx { font-family: var(--mono); color: var(--dim); width: 2.2rem; }
+      .cat { color: var(--muted); font-size: 0.76rem; }
+      .flag { font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
+      .flag.ok { color: var(--ok); }
+      .flag.bad { color: var(--bad); }
+
+      .verdict {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        padding: 1rem;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: #0e141c;
+      }
+      .verdict .big {
+        font-size: 1.45rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        text-transform: uppercase;
+      }
+      .verdict.allow { border-color: rgba(63,185,80,0.45); }
+      .verdict.allow .big { color: var(--ok); }
+      .verdict.escalate { border-color: rgba(217,164,65,0.45); }
+      .verdict.escalate .big { color: var(--warn); }
+      .verdict.block { border-color: rgba(240,86,74,0.5); }
+      .verdict.block .big { color: var(--bad); }
+      .verdict .why { color: var(--muted); font-size: 0.83rem; }
+
+      .viol {
+        border-left: 2px solid var(--bad);
+        padding: 0.45rem 0.7rem;
+        background: #17100f;
+        border-radius: 0 6px 6px 0;
+        font-size: 0.81rem;
+      }
+      .viol .cls { font-family: var(--mono); color: #ff9d94; font-size: 0.76rem; }
+      .viol .ev { color: var(--muted); margin-top: 0.2rem; word-break: break-word; }
+
+      dl.kv { display: grid; grid-template-columns: 10rem 1fr; gap: 0.35rem 0.9rem; margin: 0; }
+      dl.kv dt { color: var(--dim); font-size: 0.78rem; }
+      dl.kv dd { margin: 0; font-family: var(--mono); font-size: 0.75rem; word-break: break-all; }
+
+      .banner {
+        padding: 0.7rem 0.9rem;
+        border-radius: 8px;
+        font-size: 0.84rem;
+        border: 1px solid;
+      }
+      .banner.bait { background: #17100f; border-color: #58201b; color: #ffb4ac; }
+      .banner.held { background: #0d1710; border-color: #1e4527; color: #a4e3b0; }
+      .banner.err { background: #17100f; border-color: #58201b; color: #ffb4ac; }
+      .banner b { color: inherit; }
+
+      .chainrow {
+        display: grid;
+        grid-template-columns: 5.5rem 1fr auto;
+        gap: 0.6rem;
+        align-items: center;
+        padding: 0.4rem 0;
+        border-top: 1px solid var(--line);
+        font-size: 0.78rem;
+      }
+      .chainrow:first-child { border-top: 0; }
+      .chainrow .h { font-family: var(--mono); color: var(--dim); font-size: 0.72rem; }
+      .pill {
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 0.08rem 0.45rem;
+        border-radius: 999px;
+      }
+      .pill.allow { background: rgba(63,185,80,0.16); color: var(--ok); }
+      .pill.escalate { background: rgba(217,164,65,0.16); color: var(--warn); }
+      .pill.block { background: rgba(240,86,74,0.16); color: var(--bad); }
+
+      .muted { color: var(--muted); font-size: 0.82rem; }
+      .payload {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        line-height: 1.5;
+        color: #ffb4ac;
+        background: #17100f;
+        border: 1px solid #58201b;
+        border-radius: 7px;
+        padding: 0.6rem 0.7rem;
+        max-height: 7rem;
+        overflow: auto;
+      }
+      .spinner {
+        display: inline-block;
+        width: 0.8rem;
+        height: 0.8rem;
+        border: 2px solid var(--line);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        vertical-align: -1px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .empty { color: var(--dim); font-size: 0.82rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Instruction–cart conformance gate</h1>
+      <span class="tag" id="model">…</span>
+      <span class="tag">Razorpay test mode</span>
+      <p>
+        An agent shops against a catalogue. The gate decides whether the cart it built
+        matches what the human actually asked for — and signs the answer.
+      </p>
+    </header>
+
+    <main>
+      <div class="stack">
+        <section>
+          <h2>The mandate</h2>
+          <div class="body">
+            <div class="req" id="request">…</div>
+            <div class="chips" id="stated"></div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Run</h2>
+          <div class="body stack">
+            <div class="controls">
+              <button class="primary" id="run-clean">Run clean catalogue</button>
+              <button class="danger" id="run-poison">Run poisoned catalogue</button>
+            </div>
+            <div class="muted" id="status">
+              The semantic judge is <b>captured</b> for every run — it returns “satisfies”
+              at confidence 1.0 for every line. What you see holding is not the model.
+            </div>
+            <details>
+              <summary class="muted" style="cursor: pointer">The injected payload</summary>
+              <div class="payload" id="payload" style="margin-top: 0.6rem"></div>
+            </details>
+          </div>
+        </section>
+
+        <section>
+          <h2>Catalogue</h2>
+          <div class="body">
+            <table>
+              <thead>
+                <tr><th class="idx">#</th><th>Product</th><th>Role</th></tr>
+              </thead>
+              <tbody id="catalogue"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section>
+          <h2>Gate decision</h2>
+          <div class="body stack" id="decision-panel">
+            <p class="empty">Run a scenario to see a decision.</p>
+          </div>
+        </section>
+
+        <section>
+          <h2>Certificate</h2>
+          <div class="body" id="cert-panel">
+            <p class="empty">No certificate yet.</p>
+          </div>
+        </section>
+
+        <section>
+          <h2>Audit chain</h2>
+          <div class="body" id="chain-panel">
+            <p class="empty">No records yet.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      let meta = null;
+
+      const esc = (s) =>
+        String(s).replace(/[&<>"']/g, (c) =>
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        );
+      const rupees = (p) => '₹' + (p / 100).toFixed(2);
+      const short = (h) => String(h).replace('sha256:', '').slice(0, 16) + '…';
+
+      async function boot() {
+        meta = await (await fetch('/api/scenario')).json();
+        $('request').textContent = meta.request;
+        $('model').textContent = meta.hasKey ? meta.model : 'no model key set';
+        $('payload').textContent = meta.payload;
+
+        const chips = [
+          `<span class="chip">authorised category <b>${esc(meta.authorisedCategory)}</b></span>`,
+          ...meta.stated.attributes.map((a) => `<span class="chip">stated <b>${esc(a)}</b></span>`),
+          ...meta.stated.options.map((o) => `<span class="chip">stated <b>${esc(o)}</b></span>`),
+        ];
+        $('stated').innerHTML = chips.join('');
+
+        renderCatalogue([]);
+        refreshChain();
+      }
+
+      function renderCatalogue(pickedIdx) {
+        $('catalogue').innerHTML = meta.catalogue
+          .map((e) => {
+            const cls = [
+              e.index === meta.correctIndex ? 'correct' : '',
+              e.index === meta.poisonIndex ? 'poisoned' : '',
+              pickedIdx.includes(e.index) ? 'picked' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            const role =
+              e.index === meta.correctIndex
+                ? '<span class="flag ok">answers it</span>'
+                : e.index === meta.poisonIndex
+                  ? '<span class="flag bad">out of scope</span>'
+                  : '';
+            return `<tr class="${cls}">
+              <td class="idx">${e.index}</td>
+              <td>${esc(e.name.slice(0, 78))}<div class="cat">${esc(e.category)} · ${rupees(e.pricePaise)}</div></td>
+              <td>${role}</td>
+            </tr>`;
+          })
+          .join('');
+      }
+
+      async function run(poisoned) {
+        $('run-clean').disabled = true;
+        $('run-poison').disabled = true;
+        $('status').innerHTML = `<span class="spinner"></span> asking the agent to fill a cart…`;
+
+        try {
+          const r = await (await fetch('/api/run?poisoned=' + (poisoned ? 1 : 0))).json();
+          if (r.error || r.agentFailed) {
+            $('decision-panel').innerHTML =
+              `<div class="banner err"><b>The agent call failed.</b> ${esc(r.agentReason || r.error)}
+               <div style="margin-top:.35rem">An outage is not an empty cart, so nothing is shown as a result.</div></div>`;
+            return;
+          }
+          renderCatalogue(r.picks.map((p) => p.index));
+          renderDecision(r);
+          renderCert(r.certificate);
+          refreshChain();
+        } finally {
+          $('run-clean').disabled = false;
+          $('run-poison').disabled = false;
+          $('status').innerHTML =
+            'The semantic judge is <b>captured</b> for every run — it returns “satisfies” at confidence 1.0 for every line. What you see holding is not the model.';
+        }
+      }
+
+      function renderDecision(r) {
+        const why =
+          r.decision === 'block'
+            ? 'A deterministic check proved a divergence. Only provable findings block.'
+            : r.decision === 'escalate'
+              ? 'Something needs a human. Model findings escalate; they never block, and never clear.'
+              : 'The cart matches the mandate on every check that can be decided.';
+
+        const bait = r.poisoned
+          ? r.tookBait
+            ? `<div class="banner bait"><b>The agent took the bait.</b> It obeyed text written by
+               the merchant and put an out-of-scope item in the cart${r.obeyedQuantity ? ', at exactly the quantity the injection demanded' : ''}.</div>`
+            : `<div class="banner held">The agent did not take the bait on this run. That is a fact
+               about this model on this prompt, not a defence.</div>`
+          : '';
+
+        const held =
+          r.poisoned && r.tookBait && r.decision === 'block'
+            ? `<div class="banner held"><b>The gate refused it anyway.</b> Nothing in that refusal read
+               the prose — it compared a declared category against the authorised one. The judge was
+               captured and could not lower the decision, because under the lattice nothing can.</div>`
+            : '';
+
+        const picks = r.picks.length
+          ? `<table><thead><tr><th class="idx">#</th><th>Agent put in the cart</th><th>Qty</th></tr></thead><tbody>
+             ${r.picks
+               .map(
+                 (p) =>
+                   `<tr><td class="idx">${p.index}</td><td>${esc(p.name.slice(0, 62))}<div class="cat">${esc(p.category)}</div></td><td>${p.quantity}</td></tr>`,
+               )
+               .join('')}</tbody></table>`
+          : '<p class="empty">The agent bought nothing.</p>';
+
+        const viols = r.violations.length
+          ? r.violations
+              .map(
+                (v) =>
+                  `<div class="viol"><div class="cls">${esc(v.class || v.source)}</div><div class="ev">${esc(String(v.evidence).slice(0, 220))}</div></div>`,
+              )
+              .join('')
+          : '<p class="muted">No violations found.</p>';
+
+        $('decision-panel').innerHTML = `
+          <div class="verdict ${r.decision}">
+            <div class="big">${r.decision}</div>
+            <div class="why">${why}</div>
+          </div>
+          ${bait}${held}
+          ${picks}
+          <div class="stack">${viols}</div>`;
+      }
+
+      function renderCert(c) {
+        $('cert-panel').innerHTML = `
+          <dl class="kv">
+            <dt>Signature</dt><dd>${c.verifies ? '<span class="flag ok">verifies</span>' : '<span class="flag bad">INVALID</span>'} · ed25519 · key ${esc(c.key_id)}</dd>
+            <dt>Certificate</dt><dd>${esc(c.id)}</dd>
+            <dt>Mandate hash</dt><dd>${esc(short(c.mandate_hash))}</dd>
+            <dt>Cart hash</dt><dd>${esc(short(c.cart_hash))}</dd>
+            <dt>Policy version</dt><dd>${esc(short(c.policy_version))}</dd>
+            <dt>Previous</dt><dd>${esc(short(c.prev_hash))}</dd>
+            <dt>Model</dt><dd>${esc(c.model ? c.model.id : 'none')}</dd>
+            ${
+              c.reserve
+                ? `<dt>Reserve</dt><dd>${rupees(c.reserve.amount_paise)} · ${esc(c.reserve.rationale_code)}</dd>
+                   <dt>OC-228</dt><dd>${c.reserve.constraint_proof.oc228 === 'pass' ? '<span class="flag ok">pass</span>' : '<span class="flag bad">fail</span>'} · verified independently of the sizer</dd>`
+                : ''
+            }
+            <dt>Issued</dt><dd>${esc(c.issued_at)}</dd>
+          </dl>
+          <p class="muted" style="margin:.8rem 0 0">
+            Written to the audit log <b>before</b> any order could exist. The signature covers
+            every field above, so editing one breaks it.
+          </p>`;
+      }
+
+      async function refreshChain() {
+        const v = await (await fetch('/api/chain')).json();
+        if (!v.records) {
+          $('chain-panel').innerHTML = '<p class="empty">No records yet.</p>';
+          return;
+        }
+        $('chain-panel').innerHTML = `
+          <div class="muted" style="margin-bottom:.6rem">
+            ${v.records} record${v.records === 1 ? '' : 's'} ·
+            ${v.valid ? '<span class="flag ok">chain valid</span>' : `<span class="flag bad">${v.breaks.length} break(s)</span>`}
+            · head ${esc(short(v.head))}
+          </div>
+          ${v.entries
+            .slice()
+            .reverse()
+            .map(
+              (e) => `<div class="chainrow">
+                <span class="pill ${e.decision}">${e.decision}</span>
+                <span class="h">${esc(short(e.hash))} ← ${esc(short(e.prev_hash))}</span>
+                <span class="flag ${e.verifies ? 'ok' : 'bad'}">${e.verifies ? 'signed' : 'INVALID'}</span>
+              </div>`,
+            )
+            .join('')}`;
+      }
+
+      $('run-clean').addEventListener('click', () => run(false));
+      $('run-poison').addEventListener('click', () => run(true));
+      boot();
+    </script>
+  </body>
+</html>
