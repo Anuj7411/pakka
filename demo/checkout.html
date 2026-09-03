@@ -3,150 +3,170 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Conformance Gate — live checkout</title>
+    <title>Conformance Gate — checkout</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      /* Same tokens as demo/console.html. Two demo surfaces that look like two
+         products read as two prototypes; this is one system. */
       :root {
-        --bg: #0e1116;
-        --panel: #161b22;
-        --line: #2a323d;
-        --text: #e6edf3;
-        --muted: #8b949e;
-        --ok: #3fb950;
-        --warn: #d29922;
-        --bad: #f85149;
-        --accent: #58a6ff;
+        --s0: #07080b; --s1: #0c0e13; --s2: #12151c; --s3: #191d26;
+        --line: #232833; --line-soft: #1a1e27;
+        --fg: #e7ecf3; --fg-2: #9aa5b6; --fg-3: #67707f;
+        --ok: #34d399; --warn: #fbbf24; --bad: #fb5f52; --accent: #5b8cff;
+        --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+        --ease: cubic-bezier(0.22, 1, 0.36, 1);
       }
       * { box-sizing: border-box; }
       body {
-        margin: 0;
-        padding: 2rem 1rem 4rem;
-        background: var(--bg);
-        color: var(--text);
-        font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 0; padding: clamp(2rem, 6vw, 4rem) 1rem 4rem;
+        background: var(--s0); color: var(--fg);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 14px; line-height: 1.55;
+        font-feature-settings: 'cv02','cv03','cv04','ss01';
+        -webkit-font-smoothing: antialiased;
       }
-      main { max-width: 720px; margin: 0 auto; }
-      h1 { font-size: 1.35rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
-      .sub { color: var(--muted); margin: 0 0 1.75rem; font-size: 0.92rem; }
-      .panel {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 1.1rem 1.25rem;
-        margin-bottom: 1rem;
+      body::before {
+        content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+        background:
+          radial-gradient(52rem 30rem at 10% -14%, rgba(91,140,255,0.09), transparent 60%),
+          radial-gradient(40rem 26rem at 94% 2%, rgba(52,211,153,0.05), transparent 62%);
       }
-      .panel h2 {
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.09em;
-        color: var(--muted);
-        margin: 0 0 0.85rem;
-        font-weight: 600;
+      main { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; }
+
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.16em;
+        text-transform: uppercase; color: var(--fg-3); margin-bottom: 1rem;
       }
-      dl { display: grid; grid-template-columns: 9.5rem 1fr; gap: 0.45rem 1rem; margin: 0; }
-      dt { color: var(--muted); font-size: 0.86rem; }
-      dd {
-        margin: 0;
-        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-        font-size: 0.82rem;
-        word-break: break-all;
+      .eyebrow .dot {
+        width: 5px; height: 5px; border-radius: 50%; background: var(--ok);
+        box-shadow: 0 0 0 3px rgba(52,211,153,0.14);
       }
+      h1 {
+        margin: 0 0 0.7rem; font-size: clamp(1.7rem, 4vw, 2.5rem); font-weight: 700;
+        letter-spacing: -0.035em; line-height: 1.06;
+        background: linear-gradient(168deg, #fff 8%, #a9b6cb 96%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .lede { margin: 0 0 2rem; color: var(--fg-2); max-width: 56ch; }
+      .lede b { color: var(--fg); font-weight: 600; }
+
+      section {
+        position: relative; margin-bottom: 0.9rem;
+        background: linear-gradient(180deg, var(--s2), var(--s1));
+        border: 1px solid var(--line-soft); border-radius: 14px; overflow: hidden;
+      }
+      section::before {
+        content: ''; position: absolute; inset: 0 0 auto; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.09) 30%, rgba(255,255,255,0.09) 70%, transparent);
+      }
+      section > h2 {
+        margin: 0; padding: 0.85rem 1.15rem;
+        font-family: var(--mono); font-size: 0.68rem; font-weight: 500;
+        letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-3);
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .body { padding: 1.15rem; }
+
+      dl { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: 0.42rem 1rem; margin: 0; }
+      dt { color: var(--fg-3); font-size: 0.78rem; }
+      dd { margin: 0; font-family: var(--mono); font-size: 0.74rem; color: var(--fg-2); word-break: break-all; }
+
       .pill {
-        display: inline-block;
-        padding: 0.12rem 0.55rem;
-        border-radius: 999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
+        display: inline-block; font-family: var(--mono); font-size: 0.62rem;
+        font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+        padding: 0.16rem 0.5rem; border-radius: 999px;
       }
-      .pill.allow { background: rgba(63, 185, 80, 0.16); color: var(--ok); }
-      .pill.escalate { background: rgba(210, 153, 34, 0.16); color: var(--warn); }
-      .pill.block { background: rgba(248, 81, 73, 0.16); color: var(--bad); }
+      .pill.allow { background: rgba(52,211,153,0.13); color: var(--ok); }
+      .pill.escalate { background: rgba(251,191,36,0.13); color: var(--warn); }
+      .pill.block { background: rgba(251,95,82,0.13); color: var(--bad); }
+
       button {
-        width: 100%;
-        padding: 0.75rem;
-        font: inherit;
-        font-weight: 600;
-        color: #06121f;
-        background: var(--accent);
-        border: 0;
-        border-radius: 8px;
+        width: 100%; font: inherit; font-weight: 600; font-size: 0.92rem;
+        padding: 0.85rem; border-radius: 11px; border: 1px solid transparent;
+        background: linear-gradient(180deg, #6d9bff, #4a7cf0); color: #06101f;
         cursor: pointer;
+        box-shadow: 0 0 0 1px rgba(91,140,255,0.25), 0 12px 30px -14px rgba(91,140,255,0.8);
+        transition: transform 0.16s var(--ease), background 0.16s var(--ease);
       }
-      button:hover { filter: brightness(1.08); }
-      .cards { font-size: 0.86rem; color: var(--muted); }
-      .cards code {
-        color: var(--text);
-        background: #0b0f14;
-        border: 1px solid var(--line);
-        border-radius: 5px;
-        padding: 0.1rem 0.4rem;
-        font-size: 0.82rem;
+      button:hover { transform: translateY(-1px); background: linear-gradient(180deg, #7ea7ff, #5386f5); }
+      button:active { transform: translateY(0); }
+
+      ul.cards { margin: 0; padding-left: 1.1rem; color: var(--fg-2); font-size: 0.85rem; }
+      ul.cards li { margin-bottom: 0.4rem; }
+      code {
+        font-family: var(--mono); font-size: 0.78rem; color: var(--fg);
+        background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+        border-radius: 5px; padding: 0.1rem 0.4rem;
       }
-      .cards li { margin-bottom: 0.4rem; }
+
       #outcome:empty { display: none; }
       #outcome {
-        margin-top: 1rem;
-        padding: 1rem 1.25rem;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        background: var(--panel);
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 0.83rem;
-        white-space: pre-wrap;
-        word-break: break-word;
+        margin-top: 1rem; padding: 1rem 1.15rem; border-radius: 11px;
+        border: 1px solid var(--line); background: var(--s3);
+        font-family: var(--mono); font-size: 0.78rem; line-height: 1.7;
+        white-space: pre-wrap; word-break: break-word;
       }
-      #outcome.bad { border-color: rgba(248, 81, 73, 0.5); }
-      #outcome.good { border-color: rgba(63, 185, 80, 0.5); }
-      .note { color: var(--muted); font-size: 0.82rem; margin-top: 1.5rem; }
+      #outcome.bad { border-color: rgba(251,95,82,0.4); background: rgba(251,95,82,0.05); color: #ffbdb5; }
+      #outcome.good { border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.05); color: #a7ebcd; }
+
+      .note { color: var(--fg-3); font-size: 0.8rem; margin-top: 1.5rem; }
+      .note code { font-size: 0.74rem; }
     </style>
   </head>
   <body>
     <main>
-      <h1>Instruction–cart conformance gate</h1>
-      <p class="sub">
-        Test mode. The gate ran <strong>before</strong> this order existed; the
-        certificate below was written to the audit chain first.
+      <div class="eyebrow"><span class="dot"></span> Razorpay test mode</div>
+      <h1>Pay for a gated cart</h1>
+      <p class="lede">
+        The gate ran <b>before</b> this order existed and its certificate was written to the
+        audit chain first. This page exists for the <b>failure</b> path — a declined or
+        timed-out payment must leave that trail intact and readable.
       </p>
 
-      <section class="panel">
+      <section>
         <h2>Gate decision</h2>
-        <dl>
-          <dt>Decision</dt>
-          <dd><span class="pill __DECISION__">__DECISION__</span></dd>
-          <dt>Certificate</dt>
-          <dd>__CERT_ID__</dd>
-          <dt>Certificate hash</dt>
-          <dd>__CERT_HASH__</dd>
-          <dt>Cart hash</dt>
-          <dd>__CART_HASH__</dd>
-          <dt>Order</dt>
-          <dd>__ORDER_ID__</dd>
-        </dl>
+        <div class="body">
+          <dl>
+            <dt>Decision</dt><dd><span class="pill __DECISION__">__DECISION__</span></dd>
+            <dt>Certificate</dt><dd>__CERT_ID__</dd>
+            <dt>Certificate hash</dt><dd>__CERT_HASH__</dd>
+            <dt>Cart hash</dt><dd>__CART_HASH__</dd>
+            <dt>Order</dt><dd>__ORDER_ID__</dd>
+          </dl>
+        </div>
       </section>
 
-      <section class="panel">
+      <section>
         <h2>Pay</h2>
-        <button id="pay">Pay ₹1,299.00</button>
-        <div id="outcome"></div>
+        <div class="body">
+          <button id="pay">Pay ₹1,299.00</button>
+          <div id="outcome"></div>
+        </div>
       </section>
 
-      <section class="panel">
+      <section>
         <h2>Razorpay test cards</h2>
-        <ul class="cards">
-          <li><code>4111 1111 1111 1111</code> — succeeds</li>
-          <li><code>4100 2800 0009 0000</code> — fails with <code>payment_timed_out</code></li>
-        </ul>
-        <p class="cards" style="margin-bottom: 0">
-          Any future expiry, any CVV. These are Razorpay's published test numbers;
-          no money can move in test mode.
-        </p>
+        <div class="body">
+          <ul class="cards">
+            <li><code>4111 1111 1111 1111</code> — succeeds</li>
+            <li><code>4100 2800 0009 0000</code> — fails with <code>payment_timed_out</code></li>
+          </ul>
+          <p class="note" style="margin-top: 0.9rem">
+            Any future expiry, any CVV. Razorpay's published test numbers; no money can move.
+          </p>
+        </div>
       </section>
 
       <p class="note">
-        Whatever the payment does, the certificate and the audit chain are already
-        written and independently verifiable — <code>/state</code> returns them as
-        JSON. A failed payment is not a failed audit.
+        Whatever the payment does, the certificate and the chain are already written and
+        independently verifiable — <code>/state</code> returns them as JSON. A failed payment
+        is not a failed audit.
       </p>
     </main>
 
@@ -154,19 +174,13 @@
       No Subresource Integrity hash here, deliberately. Razorpay ships
       checkout.js as a continuously-updated payment SDK and publishes no SRI
       digest for it; pinning one would break checkout on their next release.
-      The trade is real and is the same one every Razorpay integration makes:
-      we trust checkout.razorpay.com because it IS the payment provider. It
-      cannot reach the gate anyway — the decision, the certificate and the
-      audit record were all written server-side before this page was served.
+      It cannot reach the gate regardless — the decision, the certificate and
+      the audit record were all written server-side before this page was served.
     -->
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script>
       const out = document.getElementById('outcome');
-
-      function show(kind, lines) {
-        out.className = kind;
-        out.textContent = lines.join('\n');
-      }
+      const show = (kind, lines) => { out.className = kind; out.textContent = lines.join('\n'); };
 
       document.getElementById('pay').addEventListener('click', () => {
         const rzp = new Razorpay({

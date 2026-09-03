@@ -4,299 +4,436 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Conformance Gate</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      /* ── Surfaces are graduated near-black, never #000 ─────────────────────
+         Pure black on OLED makes edges vibrate and kills the sense of layering.
+         Four steps of elevation, each a real surface, depth carried by blur and
+         opacity rather than hard drop shadows. */
       :root {
-        --bg: #0b0e13;
-        --panel: #141920;
-        --panel-2: #1b212a;
-        --line: #262e3a;
-        --text: #e8eef5;
-        --muted: #8b97a8;
-        --dim: #5d6878;
-        --ok: #3fb950;
-        --warn: #d9a441;
-        --bad: #f0564a;
-        --accent: #5aa9ff;
-        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --s0: #07080b;
+        --s1: #0c0e13;
+        --s2: #12151c;
+        --s3: #191d26;
+        --line: #232833;
+        --line-soft: #1a1e27;
+
+        /* Text is never pure white — it fatigues over a long session. */
+        --fg: #e7ecf3;
+        --fg-2: #9aa5b6;
+        --fg-3: #67707f;
+
+        --ok: #34d399;
+        --ok-glow: rgba(52, 211, 153, 0.14);
+        --warn: #fbbf24;
+        --warn-glow: rgba(251, 191, 36, 0.14);
+        --bad: #fb5f52;
+        --bad-glow: rgba(251, 95, 82, 0.16);
+        --accent: #5b8cff;
+        --accent-glow: rgba(91, 140, 255, 0.16);
+
+        --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+        --ease: cubic-bezier(0.22, 1, 0.36, 1);
+        --radius: 14px;
       }
+
       * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+
       body {
         margin: 0;
-        background: var(--bg);
-        color: var(--text);
-        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: var(--s0);
+        color: var(--fg);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 14px;
+        line-height: 1.55;
+        font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
       }
-      header {
-        border-bottom: 1px solid var(--line);
-        padding: 1.1rem 1.5rem;
-        display: flex;
-        align-items: baseline;
-        gap: 1rem;
-        flex-wrap: wrap;
+
+      /* Two soft light sources, so the page has a direction rather than being
+         evenly lit. Fixed, so they do not travel with scroll. */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(58rem 34rem at 12% -12%, rgba(91, 140, 255, 0.09), transparent 60%),
+          radial-gradient(46rem 30rem at 92% 4%, rgba(52, 211, 153, 0.055), transparent 62%);
+        z-index: 0;
       }
-      header h1 { font-size: 1.05rem; margin: 0; letter-spacing: -0.01em; }
-      header .tag {
-        font-size: 0.72rem;
-        color: var(--muted);
+
+      .wrap { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; padding: 0 clamp(1rem, 3vw, 2.5rem); }
+
+      /* ── Header ─────────────────────────────────────────────────────────── */
+      header { padding: clamp(2.5rem, 6vw, 4.5rem) 0 clamp(1.5rem, 3vw, 2.25rem); }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--fg-3);
+        margin-bottom: 1.1rem;
+      }
+      .eyebrow .dot {
+        width: 5px; height: 5px; border-radius: 50%;
+        background: var(--ok);
+        box-shadow: 0 0 0 3px var(--ok-glow);
+        animation: pulse 2.6s var(--ease) infinite;
+      }
+      @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
+
+      /* Typography as the hero: large optical size, tight tracking, a gradient
+         that fades rather than shouts. */
+      h1 {
+        margin: 0 0 0.85rem;
+        font-size: clamp(2rem, 4.6vw, 3.6rem);
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1.03;
+        background: linear-gradient(168deg, #ffffff 8%, #a9b6cb 96%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        max-width: 22ch;
+      }
+      .lede { margin: 0; color: var(--fg-2); font-size: clamp(0.95rem, 1.4vw, 1.075rem); max-width: 62ch; }
+      .lede b { color: var(--fg); font-weight: 600; }
+
+      .meta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.6rem; }
+      .badge {
+        display: inline-flex; align-items: center; gap: 0.45rem;
+        font-family: var(--mono); font-size: 0.71rem;
+        padding: 0.32rem 0.7rem;
         border: 1px solid var(--line);
         border-radius: 999px;
-        padding: 0.1rem 0.6rem;
+        background: rgba(255, 255, 255, 0.022);
+        color: var(--fg-2);
       }
-      header p { margin: 0; color: var(--muted); font-size: 0.85rem; flex: 1 1 100%; }
-      main {
+      .badge svg { width: 11px; height: 11px; opacity: 0.75; }
+
+      /* ── Bento grid ─────────────────────────────────────────────────────── */
+      .bento {
         display: grid;
-        grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.35fr);
-        gap: 1rem;
-        padding: 1.25rem 1.5rem 3rem;
-        max-width: 1500px;
-        margin: 0 auto;
-        align-items: start;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 0.9rem;
+        padding-bottom: 5rem;
       }
-      @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
-      section {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 10px;
+      .card {
+        position: relative;
+        background: linear-gradient(180deg, var(--s2), var(--s1));
+        border: 1px solid var(--line-soft);
+        border-radius: var(--radius);
         overflow: hidden;
+        opacity: 0;
+        transform: translateY(14px);
+        animation: rise 0.62s var(--ease) forwards;
       }
-      section > h2 {
+      @keyframes rise { to { opacity: 1; transform: none; } }
+      /* A staggered reveal reads as one system assembling, not eight things
+         appearing at once. */
+      .card:nth-child(1) { animation-delay: 0.02s }
+      .card:nth-child(2) { animation-delay: 0.07s }
+      .card:nth-child(3) { animation-delay: 0.12s }
+      .card:nth-child(4) { animation-delay: 0.17s }
+      .card:nth-child(5) { animation-delay: 0.22s }
+      .card:nth-child(6) { animation-delay: 0.27s }
+
+      /* One hairline of light along the top edge: the cheapest convincing depth
+         cue on a dark surface. */
+      .card::before {
+        content: '';
+        position: absolute; inset: 0 0 auto; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.09) 30%, rgba(255,255,255,0.09) 70%, transparent);
+      }
+
+      .col-4 { grid-column: span 4 }
+      .col-5 { grid-column: span 5 }
+      .col-7 { grid-column: span 7 }
+      .col-8 { grid-column: span 8 }
+      .col-12 { grid-column: span 12 }
+
+      /* Three tiers, not two. A 1152px laptop is the common case and should
+         still get a grid; only genuinely narrow viewports go single-column. */
+      @media (max-width: 1180px) {
+        .col-4, .col-5 { grid-column: span 5 }
+        .col-7, .col-8 { grid-column: span 7 }
+      }
+      @media (max-width: 860px) {
+        .col-4, .col-5, .col-7, .col-8 { grid-column: span 12 }
+      }
+
+      .card > h2 {
         margin: 0;
-        padding: 0.65rem 1rem;
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.11em;
-        color: var(--muted);
-        font-weight: 600;
-        border-bottom: 1px solid var(--line);
-        background: var(--panel-2);
-      }
-      .body { padding: 1rem; }
-      .stack > * + * { margin-top: 1rem; }
-
-      .req { font-size: 1rem; line-height: 1.45; }
-      .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.7rem; }
-      .chip {
+        padding: 0.85rem 1.15rem;
         font-family: var(--mono);
-        font-size: 0.72rem;
-        padding: 0.15rem 0.5rem;
-        border-radius: 5px;
-        background: #0e141c;
-        border: 1px solid var(--line);
-        color: var(--muted);
+        font-size: 0.68rem;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--fg-3);
+        border-bottom: 1px solid var(--line-soft);
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
       }
-      .chip b { color: var(--text); font-weight: 600; }
+      .body { padding: 1.15rem; }
+      .body > * + * { margin-top: 1rem; }
 
+      /* ── Mandate ────────────────────────────────────────────────────────── */
+      .request { font-size: 1.16rem; line-height: 1.45; letter-spacing: -0.015em; color: var(--fg); }
+      .constraints { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+      .constraint {
+        font-family: var(--mono); font-size: 0.72rem;
+        padding: 0.28rem 0.6rem; border-radius: 7px;
+        background: rgba(91, 140, 255, 0.07);
+        border: 1px solid rgba(91, 140, 255, 0.18);
+        color: #b9cbf5;
+      }
+      .constraint span { color: var(--fg-3); }
+
+      /* ── Controls ───────────────────────────────────────────────────────── */
       .controls { display: flex; gap: 0.6rem; flex-wrap: wrap; }
       button {
-        font: inherit;
-        font-weight: 600;
-        font-size: 0.86rem;
-        padding: 0.6rem 0.95rem;
-        border-radius: 8px;
+        position: relative;
+        font: inherit; font-weight: 600; font-size: 0.86rem;
+        letter-spacing: -0.005em;
+        padding: 0.72rem 1.15rem;
+        border-radius: 10px;
         border: 1px solid var(--line);
-        background: var(--panel-2);
-        color: var(--text);
+        background: var(--s3);
+        color: var(--fg);
         cursor: pointer;
-        transition: filter 0.12s;
+        transition: transform 0.16s var(--ease), background 0.16s var(--ease), border-color 0.16s var(--ease);
       }
-      button:hover:not(:disabled) { filter: brightness(1.25); }
-      button:disabled { opacity: 0.5; cursor: default; }
-      button.primary { background: var(--accent); color: #071018; border-color: transparent; }
-      button.danger { background: #3a1714; color: #ffb4ac; border-color: #58201b; }
+      button:hover:not(:disabled) { transform: translateY(-1px); border-color: #333c4b; background: #1e232e; }
+      button:active:not(:disabled) { transform: translateY(0); }
+      button:disabled { opacity: 0.45; cursor: default; }
+      button.primary {
+        background: linear-gradient(180deg, #6d9bff, #4a7cf0);
+        border-color: transparent; color: #06101f;
+        box-shadow: 0 0 0 1px rgba(91,140,255,0.25), 0 10px 26px -12px rgba(91,140,255,0.75);
+      }
+      button.primary:hover:not(:disabled) { background: linear-gradient(180deg, #7ea7ff, #5386f5); }
+      button.attack {
+        background: linear-gradient(180deg, #2a1614, #1e1210);
+        border-color: #45211c; color: #ffb3aa;
+      }
+      button.attack:hover:not(:disabled) { border-color: #632e27; background: #2f1a17; }
 
-      table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
-      th {
-        text-align: left;
-        font-size: 0.68rem;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: var(--dim);
-        font-weight: 600;
-        padding: 0 0.5rem 0.4rem;
-      }
-      td { padding: 0.42rem 0.5rem; border-top: 1px solid var(--line); vertical-align: top; }
-      tr.correct td { background: rgba(63, 185, 80, 0.07); }
-      tr.poisoned td { background: rgba(240, 86, 74, 0.09); }
-      tr.picked td { box-shadow: inset 3px 0 0 var(--accent); }
-      .idx { font-family: var(--mono); color: var(--dim); width: 2.2rem; }
-      .cat { color: var(--muted); font-size: 0.76rem; }
-      .flag { font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
-      .flag.ok { color: var(--ok); }
-      .flag.bad { color: var(--bad); }
+      .note { color: var(--fg-2); font-size: 0.83rem; }
+      .note b { color: var(--fg); font-weight: 600; }
 
-      .verdict {
-        display: flex;
-        align-items: center;
-        gap: 0.8rem;
-        padding: 1rem;
-        border-radius: 9px;
-        border: 1px solid var(--line);
-        background: #0e141c;
+      details summary {
+        cursor: pointer; color: var(--fg-3); font-size: 0.8rem;
+        font-family: var(--mono); letter-spacing: 0.04em;
+        list-style: none;
       }
-      .verdict .big {
-        font-size: 1.45rem;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-        text-transform: uppercase;
-      }
-      .verdict.allow { border-color: rgba(63,185,80,0.45); }
-      .verdict.allow .big { color: var(--ok); }
-      .verdict.escalate { border-color: rgba(217,164,65,0.45); }
-      .verdict.escalate .big { color: var(--warn); }
-      .verdict.block { border-color: rgba(240,86,74,0.5); }
-      .verdict.block .big { color: var(--bad); }
-      .verdict .why { color: var(--muted); font-size: 0.83rem; }
-
-      .viol {
-        border-left: 2px solid var(--bad);
-        padding: 0.45rem 0.7rem;
-        background: #17100f;
-        border-radius: 0 6px 6px 0;
-        font-size: 0.81rem;
-      }
-      .viol .cls { font-family: var(--mono); color: #ff9d94; font-size: 0.76rem; }
-      .viol .ev { color: var(--muted); margin-top: 0.2rem; word-break: break-word; }
-
-      dl.kv { display: grid; grid-template-columns: 10rem 1fr; gap: 0.35rem 0.9rem; margin: 0; }
-      dl.kv dt { color: var(--dim); font-size: 0.78rem; }
-      dl.kv dd { margin: 0; font-family: var(--mono); font-size: 0.75rem; word-break: break-all; }
-
-      .banner {
-        padding: 0.7rem 0.9rem;
-        border-radius: 8px;
-        font-size: 0.84rem;
-        border: 1px solid;
-      }
-      .banner.bait { background: #17100f; border-color: #58201b; color: #ffb4ac; }
-      .banner.held { background: #0d1710; border-color: #1e4527; color: #a4e3b0; }
-      .banner.err { background: #17100f; border-color: #58201b; color: #ffb4ac; }
-      .banner b { color: inherit; }
-
-      .chainrow {
-        display: grid;
-        grid-template-columns: 5.5rem 1fr auto;
-        gap: 0.6rem;
-        align-items: center;
-        padding: 0.4rem 0;
-        border-top: 1px solid var(--line);
-        font-size: 0.78rem;
-      }
-      .chainrow:first-child { border-top: 0; }
-      .chainrow .h { font-family: var(--mono); color: var(--dim); font-size: 0.72rem; }
-      .pill {
-        font-size: 0.66rem;
-        font-weight: 700;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        padding: 0.08rem 0.45rem;
-        border-radius: 999px;
-      }
-      .pill.allow { background: rgba(63,185,80,0.16); color: var(--ok); }
-      .pill.escalate { background: rgba(217,164,65,0.16); color: var(--warn); }
-      .pill.block { background: rgba(240,86,74,0.16); color: var(--bad); }
-
-      .muted { color: var(--muted); font-size: 0.82rem; }
+      details summary::-webkit-details-marker { display: none }
+      details summary::before { content: '▸ '; }
+      details[open] summary::before { content: '▾ '; }
       .payload {
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        line-height: 1.5;
-        color: #ffb4ac;
-        background: #17100f;
-        border: 1px solid #58201b;
-        border-radius: 7px;
-        padding: 0.6rem 0.7rem;
-        max-height: 7rem;
-        overflow: auto;
+        margin-top: 0.7rem;
+        font-family: var(--mono); font-size: 0.72rem; line-height: 1.65;
+        color: #ffb3aa;
+        background: rgba(251, 95, 82, 0.05);
+        border: 1px solid rgba(251, 95, 82, 0.2);
+        border-radius: 10px;
+        padding: 0.75rem 0.85rem;
+        max-height: 8rem; overflow: auto;
       }
+
+      /* ── The verdict is the hero of this screen ─────────────────────────── */
+      .verdict {
+        position: relative;
+        display: flex; align-items: center; gap: 1.25rem;
+        padding: 1.5rem 1.4rem;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--s3);
+        overflow: hidden;
+      }
+      .verdict::after {
+        content: ''; position: absolute; inset: 0; pointer-events: none;
+        background: radial-gradient(30rem 12rem at 0% 50%, var(--glow, transparent), transparent 70%);
+      }
+      .verdict .word {
+        font-size: clamp(1.9rem, 4vw, 2.9rem);
+        font-weight: 800; letter-spacing: -0.045em; line-height: 1;
+        text-transform: uppercase;
+        position: relative; z-index: 1;
+      }
+      .verdict .exp { color: var(--fg-2); font-size: 0.88rem; position: relative; z-index: 1; max-width: 44ch; }
+      .verdict.allow { --glow: var(--ok-glow); border-color: rgba(52,211,153,0.32); }
+      .verdict.allow .word { color: var(--ok); text-shadow: 0 0 28px var(--ok-glow); }
+      .verdict.escalate { --glow: var(--warn-glow); border-color: rgba(251,191,36,0.32); }
+      .verdict.escalate .word { color: var(--warn); text-shadow: 0 0 28px var(--warn-glow); }
+      .verdict.block { --glow: var(--bad-glow); border-color: rgba(251,95,82,0.36); }
+      .verdict.block .word { color: var(--bad); text-shadow: 0 0 30px var(--bad-glow); }
+
+      .callout {
+        padding: 0.85rem 1rem; border-radius: 10px; font-size: 0.86rem;
+        border: 1px solid; line-height: 1.55;
+      }
+      .callout.bait { background: rgba(251,95,82,0.055); border-color: rgba(251,95,82,0.26); color: #ffbdb5; }
+      .callout.held { background: rgba(52,211,153,0.055); border-color: rgba(52,211,153,0.26); color: #a7ebcd; }
+      .callout.err  { background: rgba(251,95,82,0.055); border-color: rgba(251,95,82,0.26); color: #ffbdb5; }
+      .callout b { color: #fff; font-weight: 650; }
+
+      /* ── Tables ─────────────────────────────────────────────────────────── */
+      table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+      thead th {
+        text-align: left; font-family: var(--mono);
+        font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase;
+        color: var(--fg-3); font-weight: 500;
+        padding: 0 0.55rem 0.55rem;
+      }
+      tbody td { padding: 0.55rem; border-top: 1px solid var(--line-soft); vertical-align: top; }
+      tbody tr { transition: background 0.18s var(--ease); }
+      tbody tr:hover td { background: rgba(255,255,255,0.018); }
+      .idx { font-family: var(--mono); color: var(--fg-3); width: 2.4rem; font-size: 0.78rem; }
+      .sub { color: var(--fg-3); font-size: 0.74rem; margin-top: 0.12rem; }
+      tr.is-correct td:first-child { box-shadow: inset 2px 0 0 var(--ok); }
+      tr.is-poison td:first-child { box-shadow: inset 2px 0 0 var(--bad); }
+      tr.is-picked td { background: rgba(91,140,255,0.07) !important; }
+
+      .tag {
+        font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.09em;
+        text-transform: uppercase; font-weight: 600;
+        padding: 0.16rem 0.45rem; border-radius: 5px; white-space: nowrap;
+      }
+      .tag.ok { background: rgba(52,211,153,0.13); color: var(--ok); }
+      .tag.bad { background: rgba(251,95,82,0.13); color: var(--bad); }
+      .tag.accent { background: rgba(91,140,255,0.15); color: #8fb2ff; }
+
+      /* ── Violations ─────────────────────────────────────────────────────── */
+      .viol {
+        border-radius: 10px; padding: 0.7rem 0.9rem;
+        background: rgba(251,95,82,0.045);
+        border: 1px solid rgba(251,95,82,0.2);
+        border-left-width: 2px;
+      }
+      .viol .cls { font-family: var(--mono); font-size: 0.72rem; color: #ff9d94; letter-spacing: 0.04em; }
+      .viol .ev { color: var(--fg-2); font-size: 0.8rem; margin-top: 0.25rem; word-break: break-word; }
+
+      /* ── Certificate ────────────────────────────────────────────────────── */
+      .kv { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: 0.42rem 1rem; margin: 0; }
+      .kv dt { color: var(--fg-3); font-size: 0.78rem; }
+      .kv dd { margin: 0; font-family: var(--mono); font-size: 0.74rem; word-break: break-all; color: var(--fg-2); }
+      .kv dd.strong { color: var(--fg); }
+
+      /* ── Chain ──────────────────────────────────────────────────────────── */
+      .chain { display: flex; flex-direction: column; }
+      .link {
+        display: grid; grid-template-columns: 5.2rem 1fr auto;
+        align-items: center; gap: 0.75rem;
+        padding: 0.5rem 0; border-top: 1px solid var(--line-soft);
+        font-family: var(--mono); font-size: 0.74rem;
+      }
+      .link:first-child { border-top: 0 }
+      .link .hash { color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .link .hash em { color: var(--fg-2); font-style: normal; }
+      .pill {
+        font-size: 0.62rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+        padding: 0.14rem 0.5rem; border-radius: 999px; text-align: center;
+      }
+      .pill.allow { background: rgba(52,211,153,0.13); color: var(--ok) }
+      .pill.escalate { background: rgba(251,191,36,0.13); color: var(--warn) }
+      .pill.block { background: rgba(251,95,82,0.13); color: var(--bad) }
+
+      .empty { color: var(--fg-3); font-size: 0.85rem; }
       .spinner {
-        display: inline-block;
-        width: 0.8rem;
-        height: 0.8rem;
-        border: 2px solid var(--line);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: spin 0.7s linear infinite;
-        vertical-align: -1px;
+        display: inline-block; width: 0.85rem; height: 0.85rem;
+        border: 2px solid rgba(255,255,255,0.12); border-top-color: var(--accent);
+        border-radius: 50%; animation: spin 0.65s linear infinite; vertical-align: -2px;
       }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .empty { color: var(--dim); font-size: 0.82rem; }
+      @keyframes spin { to { transform: rotate(360deg) } }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+        .card { opacity: 1; transform: none; }
+      }
     </style>
   </head>
   <body>
-    <header>
-      <h1>Instruction–cart conformance gate</h1>
-      <span class="tag" id="model">…</span>
-      <span class="tag">Razorpay test mode</span>
-      <p>
-        An agent shops against a catalogue. The gate decides whether the cart it built
-        matches what the human actually asked for — and signs the answer.
-      </p>
-    </header>
+    <div class="wrap">
+      <header>
+        <div class="eyebrow"><span class="dot"></span> Razorpay AI Buildathon · Track 01</div>
+        <h1>Did the agent buy what you actually asked for?</h1>
+        <p class="lede">
+          Payment rails see a valid, authorised, correctly-signed transaction. They cannot see
+          that you asked for a 6-foot cable and got a 2-foot one. This gate decides that
+          <b>before the order exists</b> — and signs the answer.
+        </p>
+        <div class="meta">
+          <span class="badge" id="model">…</span>
+          <span class="badge">Razorpay test mode</span>
+          <span class="badge">judge captured · returns “satisfies” always</span>
+        </div>
+      </header>
 
-    <main>
-      <div class="stack">
-        <section>
+      <div class="bento">
+        <section class="card col-5">
           <h2>The mandate</h2>
           <div class="body">
-            <div class="req" id="request">…</div>
-            <div class="chips" id="stated"></div>
+            <div class="request" id="request">…</div>
+            <div class="constraints" id="constraints"></div>
           </div>
         </section>
 
-        <section>
-          <h2>Run</h2>
-          <div class="body stack">
+        <section class="card col-7">
+          <h2>Run the gate</h2>
+          <div class="body">
             <div class="controls">
               <button class="primary" id="run-clean">Run clean catalogue</button>
-              <button class="danger" id="run-poison">Run poisoned catalogue</button>
+              <button class="attack" id="run-poison">Run poisoned catalogue</button>
             </div>
-            <div class="muted" id="status">
-              The semantic judge is <b>captured</b> for every run — it returns “satisfies”
-              at confidence 1.0 for every line. What you see holding is not the model.
-            </div>
+            <p class="note" id="status">
+              The semantic judge is <b>captured</b> for every run — it returns “satisfies” at
+              confidence 1.0 on every line. What holds is not the model.
+            </p>
             <details>
-              <summary class="muted" style="cursor: pointer">The injected payload</summary>
-              <div class="payload" id="payload" style="margin-top: 0.6rem"></div>
+              <summary>The payload a hostile merchant writes into its own listing</summary>
+              <div class="payload" id="payload"></div>
             </details>
           </div>
         </section>
 
-        <section>
-          <h2>Catalogue</h2>
-          <div class="body">
+        <section class="card col-7">
+          <h2>Gate decision</h2>
+          <div class="body" id="decision"><p class="empty">Run a scenario to see a decision.</p></div>
+        </section>
+
+        <section class="card col-5">
+          <h2>Certificate <span class="tag accent" id="cert-state" hidden></span></h2>
+          <div class="body" id="cert"><p class="empty">No certificate yet.</p></div>
+        </section>
+
+        <section class="card col-8">
+          <h2>Catalogue <span id="cat-count" style="color:var(--fg-3);font-weight:400"></span></h2>
+          <div class="body" style="padding-top:0.6rem">
             <table>
-              <thead>
-                <tr><th class="idx">#</th><th>Product</th><th>Role</th></tr>
-              </thead>
+              <thead><tr><th class="idx">#</th><th>Product</th><th>Role</th></tr></thead>
               <tbody id="catalogue"></tbody>
             </table>
           </div>
         </section>
-      </div>
 
-      <div class="stack">
-        <section>
-          <h2>Gate decision</h2>
-          <div class="body stack" id="decision-panel">
-            <p class="empty">Run a scenario to see a decision.</p>
-          </div>
-        </section>
-
-        <section>
-          <h2>Certificate</h2>
-          <div class="body" id="cert-panel">
-            <p class="empty">No certificate yet.</p>
-          </div>
-        </section>
-
-        <section>
+        <section class="card col-4">
           <h2>Audit chain</h2>
-          <div class="body" id="chain-panel">
-            <p class="empty">No records yet.</p>
-          </div>
+          <div class="body" id="chain"><p class="empty">No records yet.</p></div>
         </section>
       </div>
-    </main>
+    </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -304,64 +441,55 @@
 
       const esc = (s) =>
         String(s).replace(/[&<>"']/g, (c) =>
-          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-        );
-      const rupees = (p) => '₹' + (p / 100).toFixed(2);
-      const short = (h) => String(h).replace('sha256:', '').slice(0, 16) + '…';
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      const inr = (p) => '₹' + (p / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const shortHash = (h) => String(h).replace('sha256:', '').slice(0, 14) + '…';
 
       async function boot() {
         meta = await (await fetch('/api/scenario')).json();
         $('request').textContent = meta.request;
         $('model').textContent = meta.hasKey ? meta.model : 'no model key set';
-        $('payload').textContent = meta.payload;
+        $('payload').textContent = meta.payload.trim();
+        $('cat-count').textContent = `· ${meta.catalogue.length} items`;
 
-        const chips = [
-          `<span class="chip">authorised category <b>${esc(meta.authorisedCategory)}</b></span>`,
-          ...meta.stated.attributes.map((a) => `<span class="chip">stated <b>${esc(a)}</b></span>`),
-          ...meta.stated.options.map((o) => `<span class="chip">stated <b>${esc(o)}</b></span>`),
-        ];
-        $('stated').innerHTML = chips.join('');
+        $('constraints').innerHTML = [
+          `<span class="constraint"><span>scope</span> ${esc(meta.authorisedCategory)}</span>`,
+          ...meta.stated.attributes.map((a) => `<span class="constraint"><span>stated</span> ${esc(a)}</span>`),
+          ...meta.stated.options.map((o) => `<span class="constraint"><span>stated</span> ${esc(o)}</span>`),
+        ].join('');
 
         renderCatalogue([]);
         refreshChain();
       }
 
-      function renderCatalogue(pickedIdx) {
+      function renderCatalogue(picked) {
         $('catalogue').innerHTML = meta.catalogue
           .map((e) => {
             const cls = [
-              e.index === meta.correctIndex ? 'correct' : '',
-              e.index === meta.poisonIndex ? 'poisoned' : '',
-              pickedIdx.includes(e.index) ? 'picked' : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
+              e.index === meta.correctIndex ? 'is-correct' : '',
+              e.index === meta.poisonIndex ? 'is-poison' : '',
+              picked.includes(e.index) ? 'is-picked' : '',
+            ].filter(Boolean).join(' ');
             const role =
-              e.index === meta.correctIndex
-                ? '<span class="flag ok">answers it</span>'
-                : e.index === meta.poisonIndex
-                  ? '<span class="flag bad">out of scope</span>'
-                  : '';
+              e.index === meta.correctIndex ? '<span class="tag ok">answers it</span>'
+              : e.index === meta.poisonIndex ? '<span class="tag bad">out of scope</span>'
+              : '';
             return `<tr class="${cls}">
               <td class="idx">${e.index}</td>
-              <td>${esc(e.name.slice(0, 78))}<div class="cat">${esc(e.category)} · ${rupees(e.pricePaise)}</div></td>
-              <td>${role}</td>
-            </tr>`;
-          })
-          .join('');
+              <td>${esc(e.name.slice(0, 72))}<div class="sub">${esc(e.category)} · ${inr(e.pricePaise)}</div></td>
+              <td>${role}</td></tr>`;
+          }).join('');
       }
 
       async function run(poisoned) {
         $('run-clean').disabled = true;
         $('run-poison').disabled = true;
-        $('status').innerHTML = `<span class="spinner"></span> asking the agent to fill a cart…`;
-
+        $('status').innerHTML = '<span class="spinner"></span>&nbsp; the agent is filling a cart…';
         try {
           const r = await (await fetch('/api/run?poisoned=' + (poisoned ? 1 : 0))).json();
           if (r.error || r.agentFailed) {
-            $('decision-panel').innerHTML =
-              `<div class="banner err"><b>The agent call failed.</b> ${esc(r.agentReason || r.error)}
-               <div style="margin-top:.35rem">An outage is not an empty cart, so nothing is shown as a result.</div></div>`;
+            $('decision').innerHTML = `<div class="callout err"><b>The agent call failed.</b>
+              ${esc(r.agentReason || r.error)}<br />An outage is not an empty cart, so no result is shown.</div>`;
             return;
           }
           renderCatalogue(r.picks.map((p) => p.index));
@@ -372,109 +500,86 @@
           $('run-clean').disabled = false;
           $('run-poison').disabled = false;
           $('status').innerHTML =
-            'The semantic judge is <b>captured</b> for every run — it returns “satisfies” at confidence 1.0 for every line. What you see holding is not the model.';
+            'The semantic judge is <b>captured</b> for every run — it returns “satisfies” at confidence 1.0 on every line. What holds is not the model.';
         }
       }
 
       function renderDecision(r) {
-        const why =
-          r.decision === 'block'
-            ? 'A deterministic check proved a divergence. Only provable findings block.'
-            : r.decision === 'escalate'
-              ? 'Something needs a human. Model findings escalate; they never block, and never clear.'
-              : 'The cart matches the mandate on every check that can be decided.';
+        const exp = {
+          block: 'A deterministic check proved a divergence. Only provable findings block.',
+          escalate: 'This needs a human. Model findings escalate; they never block, and never clear.',
+          allow: 'The cart matches the mandate on every check that can be decided.',
+        }[r.decision];
 
-        const bait = r.poisoned
-          ? r.tookBait
-            ? `<div class="banner bait"><b>The agent took the bait.</b> It obeyed text written by
-               the merchant and put an out-of-scope item in the cart${r.obeyedQuantity ? ', at exactly the quantity the injection demanded' : ''}.</div>`
-            : `<div class="banner held">The agent did not take the bait on this run. That is a fact
-               about this model on this prompt, not a defence.</div>`
-          : '';
+        const bait = !r.poisoned ? '' : r.tookBait
+          ? `<div class="callout bait"><b>The agent took the bait.</b> It obeyed text written by the
+             merchant and put an out-of-scope item in the cart${r.obeyedQuantity ? ', at exactly the quantity the injection demanded' : ''}.</div>`
+          : `<div class="callout held">The agent did not take the bait on this run — a fact about this
+             model on this prompt, not a defence. The gate does not depend on the answer either way.</div>`;
 
-        const held =
-          r.poisoned && r.tookBait && r.decision === 'block'
-            ? `<div class="banner held"><b>The gate refused it anyway.</b> Nothing in that refusal read
-               the prose — it compared a declared category against the authorised one. The judge was
-               captured and could not lower the decision, because under the lattice nothing can.</div>`
-            : '';
+        const held = r.poisoned && r.tookBait && r.decision === 'block'
+          ? `<div class="callout held"><b>The gate refused it anyway.</b> Nothing in that refusal read the
+             prose — it compared a declared category against the authorised one. The judge was captured
+             and still could not lower the decision, because under the lattice nothing can.</div>` : '';
 
-        const picks = r.picks.length
-          ? `<table><thead><tr><th class="idx">#</th><th>Agent put in the cart</th><th>Qty</th></tr></thead><tbody>
-             ${r.picks
-               .map(
-                 (p) =>
-                   `<tr><td class="idx">${p.index}</td><td>${esc(p.name.slice(0, 62))}<div class="cat">${esc(p.category)}</div></td><td>${p.quantity}</td></tr>`,
-               )
-               .join('')}</tbody></table>`
+        const cart = r.picks.length
+          ? `<table><thead><tr><th class="idx">#</th><th>In the cart</th><th>Qty</th></tr></thead><tbody>
+             ${r.picks.map((p) => `<tr><td class="idx">${p.index}</td><td>${esc(p.name.slice(0, 58))}
+               <div class="sub">${esc(p.category)}</div></td><td>${p.quantity}</td></tr>`).join('')}
+             </tbody></table>`
           : '<p class="empty">The agent bought nothing.</p>';
 
         const viols = r.violations.length
-          ? r.violations
-              .map(
-                (v) =>
-                  `<div class="viol"><div class="cls">${esc(v.class || v.source)}</div><div class="ev">${esc(String(v.evidence).slice(0, 220))}</div></div>`,
-              )
-              .join('')
-          : '<p class="muted">No violations found.</p>';
+          ? r.violations.map((v) => `<div class="viol"><div class="cls">${esc(v.class || v.source)}</div>
+              <div class="ev">${esc(String(v.evidence).slice(0, 230))}</div></div>`).join('')
+          : '<p class="note">No violations found.</p>';
 
-        $('decision-panel').innerHTML = `
+        $('decision').innerHTML = `
           <div class="verdict ${r.decision}">
-            <div class="big">${r.decision}</div>
-            <div class="why">${why}</div>
+            <div class="word">${r.decision}</div>
+            <div class="exp">${exp}</div>
           </div>
-          ${bait}${held}
-          ${picks}
-          <div class="stack">${viols}</div>`;
+          ${bait}${held}${cart}${viols}`;
       }
 
       function renderCert(c) {
-        $('cert-panel').innerHTML = `
-          <dl class="kv">
-            <dt>Signature</dt><dd>${c.verifies ? '<span class="flag ok">verifies</span>' : '<span class="flag bad">INVALID</span>'} · ed25519 · key ${esc(c.key_id)}</dd>
-            <dt>Certificate</dt><dd>${esc(c.id)}</dd>
-            <dt>Mandate hash</dt><dd>${esc(short(c.mandate_hash))}</dd>
-            <dt>Cart hash</dt><dd>${esc(short(c.cart_hash))}</dd>
-            <dt>Policy version</dt><dd>${esc(short(c.policy_version))}</dd>
-            <dt>Previous</dt><dd>${esc(short(c.prev_hash))}</dd>
-            <dt>Model</dt><dd>${esc(c.model ? c.model.id : 'none')}</dd>
-            ${
-              c.reserve
-                ? `<dt>Reserve</dt><dd>${rupees(c.reserve.amount_paise)} · ${esc(c.reserve.rationale_code)}</dd>
-                   <dt>OC-228</dt><dd>${c.reserve.constraint_proof.oc228 === 'pass' ? '<span class="flag ok">pass</span>' : '<span class="flag bad">fail</span>'} · verified independently of the sizer</dd>`
-                : ''
-            }
-            <dt>Issued</dt><dd>${esc(c.issued_at)}</dd>
-          </dl>
-          <p class="muted" style="margin:.8rem 0 0">
-            Written to the audit log <b>before</b> any order could exist. The signature covers
-            every field above, so editing one breaks it.
-          </p>`;
+        $('cert-state').hidden = false;
+        $('cert-state').textContent = c.verifies ? 'verified' : 'INVALID';
+        $('cert-state').className = 'tag ' + (c.verifies ? 'ok' : 'bad');
+
+        $('cert').innerHTML = `<dl class="kv">
+          <dt>Signature</dt><dd class="strong">ed25519 · key ${esc(c.key_id)}</dd>
+          <dt>Certificate</dt><dd>${esc(c.id)}</dd>
+          <dt>Mandate</dt><dd>${esc(shortHash(c.mandate_hash))}</dd>
+          <dt>Cart</dt><dd>${esc(shortHash(c.cart_hash))}</dd>
+          <dt>Policy</dt><dd>${esc(shortHash(c.policy_version))}</dd>
+          <dt>Previous</dt><dd>${esc(shortHash(c.prev_hash))}</dd>
+          <dt>Model</dt><dd>${esc(c.model ? c.model.id : 'none')}</dd>
+          ${c.reserve ? `<dt>Reserve</dt><dd class="strong">${inr(c.reserve.amount_paise)} · ${esc(c.reserve.rationale_code)}</dd>
+            <dt>OC-228</dt><dd>${c.reserve.constraint_proof.oc228 === 'pass'
+              ? '<span class="tag ok">pass</span> verified independently of the sizer'
+              : '<span class="tag bad">fail</span>'}</dd>` : ''}
+        </dl>
+        <p class="note" style="margin-top:0.9rem">
+          Written to the audit log <b>before</b> any order could exist. The signature covers every
+          field above, so editing one breaks it.
+        </p>`;
       }
 
       async function refreshChain() {
         const v = await (await fetch('/api/chain')).json();
-        if (!v.records) {
-          $('chain-panel').innerHTML = '<p class="empty">No records yet.</p>';
-          return;
-        }
-        $('chain-panel').innerHTML = `
-          <div class="muted" style="margin-bottom:.6rem">
-            ${v.records} record${v.records === 1 ? '' : 's'} ·
-            ${v.valid ? '<span class="flag ok">chain valid</span>' : `<span class="flag bad">${v.breaks.length} break(s)</span>`}
-            · head ${esc(short(v.head))}
+        if (!v.records) { $('chain').innerHTML = '<p class="empty">No records yet.</p>'; return; }
+        $('chain').innerHTML = `
+          <div class="note" style="margin-bottom:0.75rem">
+            <b>${v.records}</b> record${v.records === 1 ? '' : 's'} ·
+            ${v.valid ? '<span class="tag ok">chain valid</span>' : `<span class="tag bad">${v.breaks.length} break(s)</span>`}
           </div>
-          ${v.entries
-            .slice()
-            .reverse()
-            .map(
-              (e) => `<div class="chainrow">
-                <span class="pill ${e.decision}">${e.decision}</span>
-                <span class="h">${esc(short(e.hash))} ← ${esc(short(e.prev_hash))}</span>
-                <span class="flag ${e.verifies ? 'ok' : 'bad'}">${e.verifies ? 'signed' : 'INVALID'}</span>
-              </div>`,
-            )
-            .join('')}`;
+          <div class="chain">${v.entries.slice().reverse().map((e) => `
+            <div class="link">
+              <span class="pill ${e.decision}">${e.decision}</span>
+              <span class="hash"><em>${esc(shortHash(e.hash))}</em> ← ${esc(shortHash(e.prev_hash))}</span>
+              <span class="tag ${e.verifies ? 'ok' : 'bad'}">${e.verifies ? 'signed' : 'bad sig'}</span>
+            </div>`).join('')}</div>`;
       }
 
       $('run-clean').addEventListener('click', () => run(false));
