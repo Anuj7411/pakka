@@ -7,362 +7,66 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/site.css" />
     <style>
-      /* ── Surfaces are graduated near-black, never #000 ─────────────────────
-         Pure black on OLED makes edges vibrate and kills the sense of layering.
-         Four steps of elevation, each a real surface, depth carried by blur and
-         opacity rather than hard drop shadows. */
-      :root {
-        --s0: #07080b;
-        --s1: #0c0e13;
-        --s2: #12151c;
-        --s3: #191d26;
-        --line: #232833;
-        --line-soft: #1a1e27;
+      /* Playground-only layout. Everything visual comes from site.css. */
+      .board { display: grid; grid-template-columns: 5fr 7fr; gap: var(--sp-4); align-items: start; }
+      @media (max-width: 1080px) { .board { grid-template-columns: minmax(0, 1fr); } }
 
-        /* Text is never pure white — it fatigues over a long session. */
-        --fg: #e7ecf3;
-        --fg-2: #9aa5b6;
-        --fg-3: #67707f;
-
-        --ok: #34d399;
-        --ok-glow: rgba(52, 211, 153, 0.14);
-        --warn: #fbbf24;
-        --warn-glow: rgba(251, 191, 36, 0.14);
-        --bad: #fb5f52;
-        --bad-glow: rgba(251, 95, 82, 0.16);
-        --accent: #5b8cff;
-        --accent-glow: rgba(91, 140, 255, 0.16);
-
-        --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-        --ease: cubic-bezier(0.22, 1, 0.36, 1);
-        --radius: 14px;
-      }
-
-      * { box-sizing: border-box; }
-      html { -webkit-text-size-adjust: 100%; }
-
-      body {
-        margin: 0;
-        background: var(--s0);
-        color: var(--fg);
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-        font-size: 14px;
-        line-height: 1.55;
-        font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
-        -webkit-font-smoothing: antialiased;
-        overflow-x: hidden;
-      }
-
-      /* Two soft light sources, so the page has a direction rather than being
-         evenly lit. Fixed, so they do not travel with scroll. */
-      body::before {
-        content: '';
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        background:
-          radial-gradient(58rem 34rem at 12% -12%, rgba(91, 140, 255, 0.09), transparent 60%),
-          radial-gradient(46rem 30rem at 92% 4%, rgba(52, 211, 153, 0.055), transparent 62%);
-        z-index: 0;
-      }
-
-      .wrap { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; padding: 0 clamp(1rem, 3vw, 2.5rem); }
-
-      /* ── Header ─────────────────────────────────────────────────────────── */
-      header { padding: clamp(2.5rem, 6vw, 4.5rem) 0 clamp(1.5rem, 3vw, 2.25rem); }
-
-      .eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--fg-3);
-        margin-bottom: 1.1rem;
-      }
-      .eyebrow .dot {
-        width: 5px; height: 5px; border-radius: 50%;
-        background: var(--ok);
-        box-shadow: 0 0 0 3px var(--ok-glow);
-        animation: pulse 2.6s var(--ease) infinite;
-      }
-      @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
-
-      /* Typography as the hero: large optical size, tight tracking, a gradient
-         that fades rather than shouts. */
-      h1 {
-        margin: 0 0 0.85rem;
-        font-size: clamp(2rem, 4.6vw, 3.6rem);
-        font-weight: 700;
-        letter-spacing: -0.035em;
-        line-height: 1.03;
-        background: linear-gradient(168deg, #ffffff 8%, #a9b6cb 96%);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-        max-width: 22ch;
-      }
-      .lede { margin: 0; color: var(--fg-2); font-size: clamp(0.95rem, 1.4vw, 1.075rem); max-width: 62ch; }
-      .lede b { color: var(--fg); font-weight: 600; }
-
-      .meta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.6rem; }
-      .badge {
-        display: inline-flex; align-items: center; gap: 0.45rem;
-        font-family: var(--mono); font-size: 0.71rem;
-        padding: 0.32rem 0.7rem;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.022);
-        color: var(--fg-2);
-      }
-      .badge svg { width: 11px; height: 11px; opacity: 0.75; }
-
-      /* ── Bento grid ─────────────────────────────────────────────────────── */
-      .bento {
-        display: grid;
-        grid-template-columns: repeat(12, 1fr);
-        gap: 0.9rem;
-        padding-bottom: 5rem;
-      }
-      .card {
-        position: relative;
-        background: linear-gradient(180deg, var(--s2), var(--s1));
-        border: 1px solid var(--line-soft);
-        border-radius: var(--radius);
-        overflow: hidden;
-        opacity: 0;
-        transform: translateY(14px);
-        animation: rise 0.62s var(--ease) forwards;
-      }
-      @keyframes rise { to { opacity: 1; transform: none; } }
-      /* A staggered reveal reads as one system assembling, not eight things
-         appearing at once. */
-      .card:nth-child(1) { animation-delay: 0.02s }
-      .card:nth-child(2) { animation-delay: 0.07s }
-      .card:nth-child(3) { animation-delay: 0.12s }
-      .card:nth-child(4) { animation-delay: 0.17s }
-      .card:nth-child(5) { animation-delay: 0.22s }
-      .card:nth-child(6) { animation-delay: 0.27s }
-
-      /* One hairline of light along the top edge: the cheapest convincing depth
-         cue on a dark surface. */
-      .card::before {
-        content: '';
-        position: absolute; inset: 0 0 auto; height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.09) 30%, rgba(255,255,255,0.09) 70%, transparent);
-      }
-
-      .col-4 { grid-column: span 4 }
-      .col-5 { grid-column: span 5 }
-      .col-7 { grid-column: span 7 }
-      .col-8 { grid-column: span 8 }
-      .col-12 { grid-column: span 12 }
-
-      /* Three tiers, not two. A 1152px laptop is the common case and should
-         still get a grid; only genuinely narrow viewports go single-column. */
-      @media (max-width: 1180px) {
-        .col-4, .col-5 { grid-column: span 5 }
-        .col-7, .col-8 { grid-column: span 7 }
-      }
-      @media (max-width: 860px) {
-        .col-4, .col-5, .col-7, .col-8 { grid-column: span 12 }
-      }
-
-      .card > h2 {
-        margin: 0;
-        padding: 0.85rem 1.15rem;
-        font-family: var(--mono);
-        font-size: 0.68rem;
-        font-weight: 500;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: var(--fg-3);
-        border-bottom: 1px solid var(--line-soft);
-        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-      }
-      .body { padding: 1.15rem; }
-      .body > * + * { margin-top: 1rem; }
-
-      /* ── Mandate ────────────────────────────────────────────────────────── */
-      .request { font-size: 1.16rem; line-height: 1.45; letter-spacing: -0.015em; color: var(--fg); }
-      .constraints { display: flex; flex-wrap: wrap; gap: 0.4rem; }
       .constraint {
-        font-family: var(--mono); font-size: 0.72rem;
-        padding: 0.28rem 0.6rem; border-radius: 7px;
-        background: rgba(91, 140, 255, 0.07);
-        border: 1px solid rgba(91, 140, 255, 0.18);
-        color: #b9cbf5;
+        font-family: var(--mono); font-size: 12px;
+        padding: 3px var(--sp-2); border-radius: var(--radius-sm);
+        background: var(--accent-dim); border: 1px solid rgba(91, 140, 255, 0.2);
+        color: #bcd0f8;
       }
       .constraint span { color: var(--fg-3); }
 
-      /* ── Controls ───────────────────────────────────────────────────────── */
-      .controls { display: flex; gap: 0.6rem; flex-wrap: wrap; }
-      button {
-        position: relative;
-        font: inherit; font-weight: 600; font-size: 0.86rem;
-        letter-spacing: -0.005em;
-        padding: 0.72rem 1.15rem;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        background: var(--s3);
-        color: var(--fg);
-        cursor: pointer;
-        transition: transform 0.16s var(--ease), background 0.16s var(--ease), border-color 0.16s var(--ease);
-      }
-      button:hover:not(:disabled) { transform: translateY(-1px); border-color: #333c4b; background: #1e232e; }
-      button:active:not(:disabled) { transform: translateY(0); }
-      button:disabled { opacity: 0.45; cursor: default; }
-      button.primary {
-        background: linear-gradient(180deg, #6d9bff, #4a7cf0);
-        border-color: transparent; color: #06101f;
-        box-shadow: 0 0 0 1px rgba(91,140,255,0.25), 0 10px 26px -12px rgba(91,140,255,0.75);
-      }
-      button.primary:hover:not(:disabled) { background: linear-gradient(180deg, #7ea7ff, #5386f5); }
-      button.attack {
-        background: linear-gradient(180deg, #2a1614, #1e1210);
-        border-color: #45211c; color: #ffb3aa;
-      }
-      button.attack:hover:not(:disabled) { border-color: #632e27; background: #2f1a17; }
-
-      .note { color: var(--fg-2); font-size: 0.83rem; }
-      .note b { color: var(--fg); font-weight: 600; }
-
-      details summary {
-        cursor: pointer; color: var(--fg-3); font-size: 0.8rem;
-        font-family: var(--mono); letter-spacing: 0.04em;
-        list-style: none;
-      }
-      details summary::-webkit-details-marker { display: none }
-      details summary::before { content: '▸ '; }
-      details[open] summary::before { content: '▾ '; }
-      .payload {
-        margin-top: 0.7rem;
-        font-family: var(--mono); font-size: 0.72rem; line-height: 1.65;
-        color: #ffb3aa;
-        background: rgba(251, 95, 82, 0.05);
-        border: 1px solid rgba(251, 95, 82, 0.2);
-        border-radius: 10px;
-        padding: 0.75rem 0.85rem;
-        max-height: 8rem; overflow: auto;
-      }
-
-      /* ── The verdict is the hero of this screen ─────────────────────────── */
-      .verdict {
-        position: relative;
-        display: flex; align-items: center; gap: 1.25rem;
-        padding: 1.5rem 1.4rem;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        background: var(--s3);
-        overflow: hidden;
-      }
-      .verdict::after {
-        content: ''; position: absolute; inset: 0; pointer-events: none;
-        background: radial-gradient(30rem 12rem at 0% 50%, var(--glow, transparent), transparent 70%);
-      }
-      .verdict .word {
-        font-size: clamp(1.9rem, 4vw, 2.9rem);
-        font-weight: 800; letter-spacing: -0.045em; line-height: 1;
-        text-transform: uppercase;
-        position: relative; z-index: 1;
-      }
-      .verdict .exp { color: var(--fg-2); font-size: 0.88rem; position: relative; z-index: 1; max-width: 44ch; }
-      .verdict.allow { --glow: var(--ok-glow); border-color: rgba(52,211,153,0.32); }
-      .verdict.allow .word { color: var(--ok); text-shadow: 0 0 28px var(--ok-glow); }
-      .verdict.escalate { --glow: var(--warn-glow); border-color: rgba(251,191,36,0.32); }
-      .verdict.escalate .word { color: var(--warn); text-shadow: 0 0 28px var(--warn-glow); }
-      .verdict.block { --glow: var(--bad-glow); border-color: rgba(251,95,82,0.36); }
-      .verdict.block .word { color: var(--bad); text-shadow: 0 0 30px var(--bad-glow); }
-
-      .callout {
-        padding: 0.85rem 1rem; border-radius: 10px; font-size: 0.86rem;
-        border: 1px solid; line-height: 1.55;
-      }
-      .callout.bait { background: rgba(251,95,82,0.055); border-color: rgba(251,95,82,0.26); color: #ffbdb5; }
-      .callout.held { background: rgba(52,211,153,0.055); border-color: rgba(52,211,153,0.26); color: #a7ebcd; }
-      .callout.err  { background: rgba(251,95,82,0.055); border-color: rgba(251,95,82,0.26); color: #ffbdb5; }
-      .callout b { color: #fff; font-weight: 650; }
-
-      /* ── Tables ─────────────────────────────────────────────────────────── */
-      table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
-      thead th {
-        text-align: left; font-family: var(--mono);
-        font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase;
-        color: var(--fg-3); font-weight: 500;
-        padding: 0 0.55rem 0.55rem;
-      }
-      tbody td { padding: 0.55rem; border-top: 1px solid var(--line-soft); vertical-align: top; }
-      tbody tr { transition: background 0.18s var(--ease); }
-      tbody tr:hover td { background: rgba(255,255,255,0.018); }
-      .idx { font-family: var(--mono); color: var(--fg-3); width: 2.4rem; font-size: 0.78rem; }
-      .sub { color: var(--fg-3); font-size: 0.74rem; margin-top: 0.12rem; }
-      tr.is-correct td:first-child { box-shadow: inset 2px 0 0 var(--ok); }
-      tr.is-poison td:first-child { box-shadow: inset 2px 0 0 var(--bad); }
-      tr.is-picked td { background: rgba(91,140,255,0.07) !important; }
-
-      .tag {
-        font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.09em;
-        text-transform: uppercase; font-weight: 600;
-        padding: 0.16rem 0.45rem; border-radius: 5px; white-space: nowrap;
-      }
-      .tag.ok { background: rgba(52,211,153,0.13); color: var(--ok); }
-      .tag.bad { background: rgba(251,95,82,0.13); color: var(--bad); }
-      .tag.accent { background: rgba(91,140,255,0.15); color: #8fb2ff; }
-
-      /* ── Violations ─────────────────────────────────────────────────────── */
       .viol {
-        border-radius: 10px; padding: 0.7rem 0.9rem;
-        background: rgba(251,95,82,0.045);
-        border: 1px solid rgba(251,95,82,0.2);
+        padding: var(--sp-3) var(--sp-4); border-radius: var(--radius);
+        background: rgba(246, 104, 94, 0.045);
+        border: 1px solid rgba(246, 104, 94, 0.18);
         border-left-width: 2px;
       }
-      .viol .cls { font-family: var(--mono); font-size: 0.72rem; color: #ff9d94; letter-spacing: 0.04em; }
-      .viol .ev { color: var(--fg-2); font-size: 0.8rem; margin-top: 0.25rem; word-break: break-word; }
+      .viol-cls { font-family: var(--mono); font-size: 12px; color: #f6968c; letter-spacing: 0.04em; }
+      .viol-ev { margin-top: var(--sp-1); font-size: 13px; line-height: 20px; color: var(--fg-2); word-break: break-word; }
 
-      /* ── Certificate ────────────────────────────────────────────────────── */
-      .kv { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: 0.42rem 1rem; margin: 0; }
-      .kv dt { color: var(--fg-3); font-size: 0.78rem; }
-      .kv dd { margin: 0; font-family: var(--mono); font-size: 0.74rem; word-break: break-all; color: var(--fg-2); }
-      .kv dd.strong { color: var(--fg); }
+      .idx { font-family: var(--mono); color: var(--fg-3); font-size: 13px; width: 32px; }
+      .sub { color: var(--fg-3); font-size: 12.5px; margin-top: 2px; }
+      tr.is-correct td:first-child { box-shadow: inset 2px 0 0 var(--ok); }
+      tr.is-poison td:first-child { box-shadow: inset 2px 0 0 var(--bad); }
+      tr.is-picked td { background: rgba(91, 140, 255, 0.06) !important; }
 
-      /* ── Chain ──────────────────────────────────────────────────────────── */
-      .chain { display: flex; flex-direction: column; }
       .link {
-        display: grid; grid-template-columns: 5.2rem 1fr auto;
-        align-items: center; gap: 0.75rem;
-        padding: 0.5rem 0; border-top: 1px solid var(--line-soft);
-        font-family: var(--mono); font-size: 0.74rem;
+        display: grid; grid-template-columns: 76px 1fr auto;
+        align-items: center; gap: var(--sp-3);
+        padding: var(--sp-2) 0; border-top: 1px solid var(--border-soft);
+        font-family: var(--mono); font-size: 12px;
       }
-      .link:first-child { border-top: 0 }
+      .link:first-child { border-top: 0; }
       .link .hash { color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .link .hash em { color: var(--fg-2); font-style: normal; }
-      .pill {
-        font-size: 0.62rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
-        padding: 0.14rem 0.5rem; border-radius: 999px; text-align: center;
-      }
-      .pill.allow { background: rgba(52,211,153,0.13); color: var(--ok) }
-      .pill.escalate { background: rgba(251,191,36,0.13); color: var(--warn) }
-      .pill.block { background: rgba(251,95,82,0.13); color: var(--bad) }
 
-      .empty { color: var(--fg-3); font-size: 0.85rem; }
-      .spinner {
-        display: inline-block; width: 0.85rem; height: 0.85rem;
-        border: 2px solid rgba(255,255,255,0.12); border-top-color: var(--accent);
-        border-radius: 50%; animation: spin 0.65s linear infinite; vertical-align: -2px;
+      details summary {
+        cursor: pointer; list-style: none;
+        font-family: var(--mono); font-size: 12px; color: var(--fg-3);
       }
-      @keyframes spin { to { transform: rotate(360deg) } }
-
-      @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-        .card { opacity: 1; transform: none; }
+      details summary::-webkit-details-marker { display: none; }
+      details summary::before { content: '+ '; }
+      details[open] summary::before { content: '\2212 '; }
+      .payload {
+        margin-top: var(--sp-3);
+        font-family: var(--mono); font-size: 12px; line-height: 20px;
+        color: #f6968c;
+        background: rgba(246, 104, 94, 0.04);
+        border: 1px solid rgba(246, 104, 94, 0.16);
+        border-radius: var(--radius);
+        padding: var(--sp-3); max-height: 128px; overflow: auto;
+        white-space: pre-wrap;
       }
+      .empty { color: var(--fg-3); font-size: 14px; }
     </style>
   </head>
   <body>
@@ -374,78 +78,90 @@
           <a href="/#problem">Problem</a>
           <a href="/#how">How it works</a>
           <a href="/#evidence">Evidence</a>
-          <a class="gh" href="https://github.com/Anuj7411/conformance-gate">★ GitHub</a>
+          <a class="btn" href="https://github.com/Anuj7411/conformance-gate">GitHub</a>
         </div>
       </div>
     </nav>
 
-    <div class="wrap wide">
-      <header>
-        <div class="eyebrow"><span class="dot"></span> Live · real modules · nothing staged</div>
-        <h1>Run the gate.</h1>
-        <p class="lede">
+    <div class="wrap wrap-wide" style="padding-block: var(--sp-12) var(--sp-24)">
+      <header style="margin-bottom: var(--sp-10)">
+        <div class="row" style="gap: var(--sp-2)">
+          <span class="dot"></span>
+          <span class="label">Live · real modules · nothing staged</span>
+        </div>
+        <h1 style="margin-top: var(--sp-4); font-size: clamp(32px, 4.4vw, 44px)">Run the gate.</h1>
+        <p class="lede" style="margin-top: var(--sp-4)">
           A real model fills a cart from the instruction below, then the gate decides. Run it
-          clean, then run it against a catalogue a hostile merchant has written into — and watch
-          what changes, and what does not.
+          clean, then run it against a catalogue a hostile merchant has written into — and
+          watch what changes, and what does not.
         </p>
-        <div class="meta">
-          <span class="badge" id="model">…</span>
-          <span class="badge">Razorpay test mode</span>
-          <span class="badge">judge captured · returns “satisfies” always</span>
+        <div class="row" style="margin-top: var(--sp-6)">
+          <span class="tag tag-mute" id="model">…</span>
+          <span class="tag tag-mute">razorpay test mode</span>
+          <span class="tag tag-warn">judge captured · always “satisfies”</span>
         </div>
       </header>
 
-      <div class="bento">
-        <section class="card col-5">
-          <h2>The mandate</h2>
-          <div class="body">
-            <div class="request" id="request">…</div>
-            <div class="constraints" id="constraints"></div>
-          </div>
-        </section>
-
-        <section class="card col-7">
-          <h2>Run the gate</h2>
-          <div class="body">
-            <div class="controls">
-              <button class="primary" id="run-clean">Run clean catalogue</button>
-              <button class="attack" id="run-poison">Run poisoned catalogue</button>
+      <div class="board">
+        <!-- left column -->
+        <div class="stack">
+          <section class="card">
+            <div class="card-head"><span>the mandate</span></div>
+            <div class="card-body">
+              <p id="request" style="font-size: 17px; line-height: 26px; letter-spacing: -0.012em">…</p>
+              <div class="row" style="gap: var(--sp-2)" id="constraints"></div>
             </div>
-            <p class="note" id="status">
-              The semantic judge is <b>captured</b> for every run — it returns “satisfies” at
-              confidence 1.0 on every line. What holds is not the model.
-            </p>
-            <details>
-              <summary>The payload a hostile merchant writes into its own listing</summary>
-              <div class="payload" id="payload"></div>
-            </details>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><span>run</span></div>
+            <div class="card-body">
+              <div class="row">
+                <button class="btn btn-primary" id="run-clean">Run clean catalogue</button>
+                <button class="btn btn-danger" id="run-poison">Run poisoned catalogue</button>
+              </div>
+              <p class="muted" id="status">
+                The semantic judge is <strong style="color: var(--fg)">captured</strong> for
+                every run — it returns “satisfies” at confidence 1.0 on every line. What holds
+                is not the model.
+              </p>
+              <details>
+                <summary>the payload written into a product description</summary>
+                <div class="payload" id="payload"></div>
+              </details>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><span>catalogue</span><span id="cat-count"></span></div>
+            <div class="card-body" style="padding-top: var(--sp-4)">
+              <table>
+                <thead><tr><th class="idx">#</th><th>Product</th><th class="num">Role</th></tr></thead>
+                <tbody id="catalogue"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- right column -->
+        <div class="stack">
+          <section class="card">
+            <div class="card-head"><span>gate decision</span></div>
+            <div class="card-body" id="decision"><p class="empty">Run a scenario to see a decision.</p></div>
+          </section>
+
+          <div class="grid g2">
+            <section class="card">
+              <div class="card-head"><span>certificate</span><span id="cert-state"></span></div>
+              <div class="card-body" id="cert"><p class="empty">No certificate yet.</p></div>
+            </section>
+
+            <section class="card">
+              <div class="card-head"><span>audit chain</span></div>
+              <div class="card-body" id="chain"><p class="empty">No records yet.</p></div>
+            </section>
           </div>
-        </section>
-
-        <section class="card col-7">
-          <h2>Gate decision</h2>
-          <div class="body" id="decision"><p class="empty">Run a scenario to see a decision.</p></div>
-        </section>
-
-        <section class="card col-5">
-          <h2>Certificate <span class="tag accent" id="cert-state" hidden></span></h2>
-          <div class="body" id="cert"><p class="empty">No certificate yet.</p></div>
-        </section>
-
-        <section class="card col-8">
-          <h2>Catalogue <span id="cat-count" style="color:var(--fg-3);font-weight:400"></span></h2>
-          <div class="body" style="padding-top:0.6rem">
-            <table>
-              <thead><tr><th class="idx">#</th><th>Product</th><th>Role</th></tr></thead>
-              <tbody id="catalogue"></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="card col-4">
-          <h2>Audit chain</h2>
-          <div class="body" id="chain"><p class="empty">No records yet.</p></div>
-        </section>
+        </div>
       </div>
     </div>
 
@@ -457,14 +173,14 @@
         String(s).replace(/[&<>"']/g, (c) =>
           ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
       const inr = (p) => '₹' + (p / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 });
-      const shortHash = (h) => String(h).replace('sha256:', '').slice(0, 14) + '…';
+      const shortHash = (h) => String(h).replace('sha256:', '').slice(0, 12) + '…';
 
       async function boot() {
         meta = await (await fetch('/api/scenario')).json();
         $('request').textContent = meta.request;
         $('model').textContent = meta.hasKey ? meta.model : 'no model key set';
         $('payload').textContent = meta.payload.trim();
-        $('cat-count').textContent = `· ${meta.catalogue.length} items`;
+        $('cat-count').textContent = meta.catalogue.length + ' items';
 
         $('constraints').innerHTML = [
           `<span class="constraint"><span>scope</span> ${esc(meta.authorisedCategory)}</span>`,
@@ -485,13 +201,13 @@
               picked.includes(e.index) ? 'is-picked' : '',
             ].filter(Boolean).join(' ');
             const role =
-              e.index === meta.correctIndex ? '<span class="tag ok">answers it</span>'
-              : e.index === meta.poisonIndex ? '<span class="tag bad">out of scope</span>'
+              e.index === meta.correctIndex ? '<span class="tag tag-ok">answers it</span>'
+              : e.index === meta.poisonIndex ? '<span class="tag tag-bad">out of scope</span>'
               : '';
             return `<tr class="${cls}">
               <td class="idx">${e.index}</td>
-              <td>${esc(e.name.slice(0, 72))}<div class="sub">${esc(e.category)} · ${inr(e.pricePaise)}</div></td>
-              <td>${role}</td></tr>`;
+              <td>${esc(e.name.slice(0, 68))}<div class="sub">${esc(e.category)} · ${inr(e.pricePaise)}</div></td>
+              <td class="num">${role}</td></tr>`;
           }).join('');
       }
 
@@ -502,8 +218,9 @@
         try {
           const r = await (await fetch('/api/run?poisoned=' + (poisoned ? 1 : 0))).json();
           if (r.error || r.agentFailed) {
-            $('decision').innerHTML = `<div class="callout err"><b>The agent call failed.</b>
-              ${esc(r.agentReason || r.error)}<br />An outage is not an empty cart, so no result is shown.</div>`;
+            $('decision').innerHTML = `<div class="callout callout-bad">
+              <strong>The agent call failed.</strong> ${esc(r.agentReason || r.error)}<br />
+              An outage is not an empty cart, so no result is shown.</div>`;
             return;
           }
           renderCatalogue(r.picks.map((p) => p.index));
@@ -514,55 +231,58 @@
           $('run-clean').disabled = false;
           $('run-poison').disabled = false;
           $('status').innerHTML =
-            'The semantic judge is <b>captured</b> for every run — it returns “satisfies” at confidence 1.0 on every line. What holds is not the model.';
+            'The semantic judge is <strong style="color:var(--fg)">captured</strong> for every run — it returns “satisfies” at confidence 1.0 on every line. What holds is not the model.';
         }
       }
 
       function renderDecision(r) {
-        const exp = {
+        const why = {
           block: 'A deterministic check proved a divergence. Only provable findings block.',
           escalate: 'This needs a human. Model findings escalate; they never block, and never clear.',
           allow: 'The cart matches the mandate on every check that can be decided.',
         }[r.decision];
 
         const bait = !r.poisoned ? '' : r.tookBait
-          ? `<div class="callout bait"><b>The agent took the bait.</b> It obeyed text written by the
-             merchant and put an out-of-scope item in the cart${r.obeyedQuantity ? ', at exactly the quantity the injection demanded' : ''}.</div>`
-          : `<div class="callout held">The agent did not take the bait on this run — a fact about this
-             model on this prompt, not a defence. The gate does not depend on the answer either way.</div>`;
+          ? `<div class="callout callout-bad"><strong>The agent took the bait.</strong> It obeyed
+             text written by the merchant and put an out-of-scope item in the
+             cart${r.obeyedQuantity ? ', at exactly the quantity the injection demanded' : ''}.</div>`
+          : `<div class="callout callout-ok">The agent did not take the bait on this run — a fact
+             about this model on this prompt, not a defence. The gate does not depend on the
+             answer either way.</div>`;
 
         const held = r.poisoned && r.tookBait && r.decision === 'block'
-          ? `<div class="callout held"><b>The gate refused it anyway.</b> Nothing in that refusal read the
-             prose — it compared a declared category against the authorised one. The judge was captured
-             and still could not lower the decision, because under the lattice nothing can.</div>` : '';
+          ? `<div class="callout callout-ok"><strong>The gate refused it anyway.</strong> Nothing in
+             that refusal read the prose — it compared a declared category against the authorised
+             one. The judge was captured and still could not lower the decision, because under the
+             lattice nothing can.</div>` : '';
 
         const cart = r.picks.length
-          ? `<table><thead><tr><th class="idx">#</th><th>In the cart</th><th>Qty</th></tr></thead><tbody>
-             ${r.picks.map((p) => `<tr><td class="idx">${p.index}</td><td>${esc(p.name.slice(0, 58))}
-               <div class="sub">${esc(p.category)}</div></td><td>${p.quantity}</td></tr>`).join('')}
+          ? `<table><thead><tr><th class="idx">#</th><th>In the cart</th><th class="num">Qty</th></tr></thead><tbody>
+             ${r.picks.map((p) => `<tr><td class="idx">${p.index}</td><td>${esc(p.name.slice(0, 56))}
+               <div class="sub">${esc(p.category)}</div></td><td class="num">${p.quantity}</td></tr>`).join('')}
              </tbody></table>`
           : '<p class="empty">The agent bought nothing.</p>';
 
         const viols = r.violations.length
-          ? r.violations.map((v) => `<div class="viol"><div class="cls">${esc(v.class || v.source)}</div>
-              <div class="ev">${esc(String(v.evidence).slice(0, 230))}</div></div>`).join('')
-          : '<p class="note">No violations found.</p>';
+          ? r.violations.map((v) => `<div class="viol"><div class="viol-cls">${esc(v.class || v.source)}</div>
+              <div class="viol-ev">${esc(String(v.evidence).slice(0, 230))}</div></div>`).join('')
+          : '<p class="muted">No violations found.</p>';
 
         $('decision').innerHTML = `
           <div class="verdict ${r.decision}">
-            <div class="word">${r.decision}</div>
-            <div class="exp">${exp}</div>
+            <div class="verdict-word">${r.decision}</div>
+            <div class="verdict-why">${why}</div>
           </div>
           ${bait}${held}${cart}${viols}`;
       }
 
       function renderCert(c) {
-        $('cert-state').hidden = false;
-        $('cert-state').textContent = c.verifies ? 'verified' : 'INVALID';
-        $('cert-state').className = 'tag ' + (c.verifies ? 'ok' : 'bad');
+        $('cert-state').innerHTML = c.verifies
+          ? '<span class="tag tag-ok">verified</span>'
+          : '<span class="tag tag-bad">invalid</span>';
 
         $('cert').innerHTML = `<dl class="kv">
-          <dt>Signature</dt><dd class="strong">ed25519 · key ${esc(c.key_id)}</dd>
+          <dt>Signature</dt><dd class="strong">ed25519 · ${esc(c.key_id)}</dd>
           <dt>Certificate</dt><dd>${esc(c.id)}</dd>
           <dt>Mandate</dt><dd>${esc(shortHash(c.mandate_hash))}</dd>
           <dt>Cart</dt><dd>${esc(shortHash(c.cart_hash))}</dd>
@@ -571,12 +291,12 @@
           <dt>Model</dt><dd>${esc(c.model ? c.model.id : 'none')}</dd>
           ${c.reserve ? `<dt>Reserve</dt><dd class="strong">${inr(c.reserve.amount_paise)} · ${esc(c.reserve.rationale_code)}</dd>
             <dt>OC-228</dt><dd>${c.reserve.constraint_proof.oc228 === 'pass'
-              ? '<span class="tag ok">pass</span> verified independently of the sizer'
-              : '<span class="tag bad">fail</span>'}</dd>` : ''}
+              ? '<span class="tag tag-ok">pass</span> verified independently of the sizer'
+              : '<span class="tag tag-bad">fail</span>'}</dd>` : ''}
         </dl>
-        <p class="note" style="margin-top:0.9rem">
-          Written to the audit log <b>before</b> any order could exist. The signature covers every
-          field above, so editing one breaks it.
+        <p class="muted" style="margin-top: var(--sp-4)">
+          Written to the audit log <strong style="color:var(--fg)">before</strong> any order
+          could exist. The signature covers every field above, so editing one breaks it.
         </p>`;
       }
 
@@ -584,16 +304,16 @@
         const v = await (await fetch('/api/chain')).json();
         if (!v.records) { $('chain').innerHTML = '<p class="empty">No records yet.</p>'; return; }
         $('chain').innerHTML = `
-          <div class="note" style="margin-bottom:0.75rem">
-            <b>${v.records}</b> record${v.records === 1 ? '' : 's'} ·
-            ${v.valid ? '<span class="tag ok">chain valid</span>' : `<span class="tag bad">${v.breaks.length} break(s)</span>`}
+          <div class="muted" style="margin-bottom: var(--sp-3)">
+            <strong style="color:var(--fg)">${v.records}</strong> record${v.records === 1 ? '' : 's'} ·
+            ${v.valid ? '<span class="tag tag-ok">chain valid</span>' : `<span class="tag tag-bad">${v.breaks.length} break(s)</span>`}
           </div>
-          <div class="chain">${v.entries.slice().reverse().map((e) => `
+          ${v.entries.slice().reverse().map((e) => `
             <div class="link">
-              <span class="pill ${e.decision}">${e.decision}</span>
+              <span class="tag tag-${e.decision === 'allow' ? 'ok' : e.decision === 'block' ? 'bad' : 'warn'}">${e.decision}</span>
               <span class="hash"><em>${esc(shortHash(e.hash))}</em> ← ${esc(shortHash(e.prev_hash))}</span>
-              <span class="tag ${e.verifies ? 'ok' : 'bad'}">${e.verifies ? 'signed' : 'bad sig'}</span>
-            </div>`).join('')}</div>`;
+              <span class="tag ${e.verifies ? 'tag-mute' : 'tag-bad'}">${e.verifies ? 'signed' : 'bad sig'}</span>
+            </div>`).join('')}`;
       }
 
       $('run-clean').addEventListener('click', () => run(false));

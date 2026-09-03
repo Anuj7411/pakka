@@ -9,7 +9,7 @@
  *   npx tsx demo/api.ts        # then open http://localhost:5173
  */
 import { createServer } from 'node:http';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { config as loadEnv } from 'dotenv';
@@ -30,8 +30,25 @@ const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, '..');
 loadEnv({ path: join(packageRoot, '.env') });
 
-const PORT = 5173;
+// Render and most hosts inject PORT; 5173 is the local default.
+const PORT = Number(process.env['PORT'] ?? 5173);
 const MODEL = 'gemini-3.1-flash-lite';
+
+/**
+ * The corpus, or the committed fixture.
+ *
+ * data/*.json is gitignored — 9MB of WebShop that a clone fetches with
+ * scripts/fetch-data.sh. A deployed instance has no such step, so it falls back
+ * to tests/fixtures, which IS committed and carries the same shape.
+ *
+ * Stated in the boot log rather than silently, because which corpus is loaded
+ * changes which scenario the page shows.
+ */
+function corpusDir(): { dir: string; source: string } {
+  const full = join(packageRoot, 'data');
+  if (existsSync(join(full, 'items_human_ins.json'))) return { dir: full, source: 'data/ (full corpus)' };
+  return { dir: join(packageRoot, 'tests', 'fixtures'), source: 'tests/fixtures (committed subset)' };
+}
 
 
 /**
@@ -50,7 +67,8 @@ const verifier = verifierFromPublicKey(signer.publicKeyBase64());
 mkdirSync(join(packageRoot, 'audit'), { recursive: true });
 const log = new AuditLog(join(packageRoot, 'audit', 'console.jsonl'));
 
-const data = loadWebShop(join(packageRoot, 'data'));
+const { dir: dataDir, source: dataSource } = corpusDir();
+const data = loadWebShop(dataDir);
 const pairs = pairInstructions(pairablePool(data, richInstructions), usableProducts(data));
 
 /** One scenario with an out-of-category product available to poison. */
@@ -208,8 +226,9 @@ createServer((req, res) => {
 
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('not found');
-}).listen(PORT);
+}).listen(PORT, '0.0.0.0');
 
+console.log(`corpus  : ${dataSource}`);
 console.log(`request : ${scenario.request}`);
 console.log(`model   : ${hasGeminiKey() ? MODEL : 'none — set GEMINI_API_KEY'}`);
 console.log(`serving : http://localhost:${PORT}`);

@@ -1,0 +1,24 @@
+# Render blueprint. Connect the repo and Render reads this.
+#
+# Secrets are NOT in here — sync:false means Render prompts for each one and
+# stores it, so nothing sensitive is ever committed. RAZORPAY_KEY_ID must be a
+# rzp_test_ key; the client refuses anything else at construction.
+services:
+  - type: web
+    name: conformance-gate
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/scenario
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: CONFORMANCE_SIGNING_KEY
+        sync: false

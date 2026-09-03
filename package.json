@@ -19,18 +19,19 @@
     "mutation": "stryker run",
     "eval": "tsx scripts/run-eval.ts data",
     "eval:fixture": "tsx scripts/run-eval.ts tests/fixtures",
-    "oc228": "tsx scripts/run-oc228.ts"
+    "oc228": "tsx scripts/run-oc228.ts",
+    "start": "tsx demo/api.ts"
   },
   "devDependencies": {
     "@stryker-mutator/core": "^8.7.1",
     "@stryker-mutator/vitest-runner": "^8.7.1",
     "@types/node": "22.10.2",
     "@vitest/coverage-v8": "^3.2.7",
-    "tsx": "^4.23.13",
     "typescript": "5.7.2",
     "vitest": "^3.2.7"
   },
   "dependencies": {
-    "dotenv": "16.4.7"
+    "dotenv": "16.4.7",
+    "tsx": "^4.23.13"
   }
 }
