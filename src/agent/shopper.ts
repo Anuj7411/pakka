@@ -53,6 +53,34 @@ export interface ShopperOptions {
   readonly apiKey?: string;
   readonly timeoutMs?: number;
   readonly fetchImpl?: typeof fetch;
+  /** Transient-failure retries. 0 disables them. */
+  readonly maxRetries?: number;
+  /** Injectable so tests do not sleep. */
+  readonly sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Statuses worth trying again.
+ *
+ * 429 is rate limiting, 5xx is the provider having a bad minute — both recover.
+ * A 400 is a malformed request and will be malformed on the next attempt too,
+ * so retrying it burns quota to learn nothing.
+ */
+const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
+
+/** The delay the provider asked for, if it named one. */
+function statedDelayMs(res: Response, body: string): number | null {
+  const header = res.headers?.get?.('retry-after');
+  if (header) {
+    const secs = Number(header);
+    if (Number.isFinite(secs) && secs >= 0) return Math.ceil(secs * 1000);
+  }
+  const m = /retry in ([\d.]+)s/i.exec(body) ?? /"retryDelay"\s*:\s*"([\d.]+)s"/i.exec(body);
+  if (m?.[1]) {
+    const secs = Number(m[1]);
+    if (Number.isFinite(secs) && secs >= 0) return Math.ceil(secs * 1000);
+  }
+  return null;
 }
 
 const RESPONSE_SCHEMA = {
@@ -119,6 +147,8 @@ export function createShopper(opts: ShopperOptions = {}) {
   const model = opts.model ?? 'gemini-3.1-flash-lite';
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const doFetch = opts.fetchImpl ?? globalThis.fetch;
+  const maxRetries = opts.maxRetries ?? 3;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   return {
     id: model,
@@ -139,32 +169,50 @@ export function createShopper(opts: ShopperOptions = {}) {
         },
       };
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      let response: Response;
-      try {
-        response = await doFetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-          {
-            method: 'POST',
-            signal: controller.signal,
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-            body: JSON.stringify(body),
-          },
-        );
-      } catch (e) {
-        const why = e instanceof Error && e.name === 'AbortError' ? 'timeout' : 'network error';
-        return { picks: [], failed: true, reason: `provider ${why}` };
-      } finally {
-        clearTimeout(timer);
-      }
+      // Retry transient failures. A recorded demo that dies because the
+      // provider had a bad second is a demo about the provider. Retrying does
+      // NOT soften the honesty rule below: if every attempt fails, this still
+      // reports `failed`, never an empty cart.
+      let text = '';
+      let lastReason = 'provider unavailable';
 
-      const text = await response.text();
-      if (!response.ok) {
-        // Reported as a failure, never as an empty cart. An agent that bought
-        // nothing and an agent that could not be reached look identical in the
-        // output and must not look identical in the data.
-        return { picks: [], failed: true, reason: `provider HTTP ${response.status}` };
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        let response: Response;
+        try {
+          response = await doFetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+            {
+              method: 'POST',
+              signal: controller.signal,
+              headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+              body: JSON.stringify(body),
+            },
+          );
+        } catch (e) {
+          const why = e instanceof Error && e.name === 'AbortError' ? 'timeout' : 'network error';
+          lastReason = `provider ${why}`;
+          clearTimeout(timer);
+          if (attempt === maxRetries) return { picks: [], failed: true, reason: lastReason };
+          await sleep(2 ** attempt * 500);
+          continue;
+        } finally {
+          clearTimeout(timer);
+        }
+
+        text = await response.text();
+        if (response.ok) break;
+
+        lastReason = `provider HTTP ${response.status}`;
+        if (!RETRYABLE.has(response.status) || attempt === maxRetries) {
+          // Reported as a failure, never as an empty cart. An agent that bought
+          // nothing and an agent that could not be reached look identical in
+          // the output and must not look identical in the data.
+          return { picks: [], failed: true, reason: lastReason };
+        }
+        // The server knows better than we do when it has said so.
+        await sleep(statedDelayMs(response, text) ?? 2 ** attempt * 500);
       }
 
       try {

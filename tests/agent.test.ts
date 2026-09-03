@@ -295,3 +295,98 @@ describe('measure: scoring what the agent did', () => {
     expect(o.pickedCorrect).toBe(true);
   });
 });
+
+describe('shopper: transient failures are retried, permanent ones are not', () => {
+  const catalogue = [entry({ index: 0 }), entry({ index: 1 })];
+  const okBody = JSON.stringify({
+    candidates: [{ content: { parts: [{ text: JSON.stringify({ picks: [{ index: 1, quantity: 2, why: 'fits' }] }) }] } }],
+  });
+
+  /**
+   * Replies with the given sequence, one per call, and counts calls.
+   *
+   * Takes FACTORIES, not Response objects: a Response body can be read only
+   * once, so a stub that hands back the same instance on a retry throws "Body
+   * has already been read" — which is a fact about the stub, not about the
+   * code. Real fetch returns a fresh response every time.
+   *
+   * The counter is a mutable property rather than an Object.assign'd getter,
+   * because Object.assign copies a getter's VALUE at assign time and it froze
+   * at 0.
+   */
+  function sequence(...make: (() => Response)[]) {
+    const f = async () => {
+      const r = make[Math.min(f.calls, make.length - 1)]!();
+      f.calls++;
+      return r;
+    };
+    f.calls = 0;
+    return f;
+  }
+  const noSleep = async () => {};
+
+  it('recovers from a 503, which is what a live demo actually hits', async () => {
+    // Observed during testing: Gemini returned HTTP 503 mid-demo. Three calls a
+    // second later all returned 200. A recorded pitch must not die on that.
+    const f = sequence(() => new Response('overloaded', { status: 503 }), () => new Response(okBody, { status: 200 }));
+    const r = await createShopper({ apiKey: 'k', fetchImpl: f as never, sleep: noSleep }).shop('x', catalogue);
+    expect(r.failed).toBe(false);
+    expect(r.picks).toHaveLength(1);
+    expect(f.calls).toBe(2);
+  });
+
+  it('retries 429 and 5xx', async () => {
+    for (const status of [408, 429, 500, 502, 503, 504]) {
+      const f = sequence(() => new Response('nope', { status }), () => new Response(okBody, { status: 200 }));
+      const r = await createShopper({ apiKey: 'k', fetchImpl: f as never, sleep: noSleep }).shop('x', catalogue);
+      expect(r.failed, `status ${status}`).toBe(false);
+    }
+  });
+
+  it('does NOT retry a 400 — it will be malformed next time too', async () => {
+    const f = sequence(() => new Response('bad request', { status: 400 }));
+    const r = await createShopper({ apiKey: 'k', fetchImpl: f as never, sleep: noSleep }).shop('x', catalogue);
+    expect(r.failed).toBe(true);
+    expect(f.calls).toBe(1);
+  });
+
+  it('gives up honestly after exhausting retries', async () => {
+    // Retrying must not soften the rule: an outage is still not an empty cart.
+    const f = sequence(() => new Response('down', { status: 503 }));
+    const r = await createShopper({ apiKey: 'k', fetchImpl: f as never, sleep: noSleep, maxRetries: 2 }).shop('x', catalogue);
+    expect(r.failed).toBe(true);
+    expect(r.reason).toContain('503');
+    expect(f.calls).toBe(3); // initial + 2 retries
+  });
+
+  it('waits the delay the provider asked for rather than guessing', async () => {
+    const waits: number[] = [];
+    const f = sequence(
+      () => new Response('Please retry in 2.5s', { status: 429 }),
+      () => new Response(okBody, { status: 200 }),
+    );
+    await createShopper({
+      apiKey: 'k',
+      fetchImpl: f as never,
+      sleep: async (ms) => { waits.push(ms); },
+    }).shop('x', catalogue);
+    expect(waits).toEqual([2500]);
+  });
+
+  it('retries a network failure too', async () => {
+    let n = 0;
+    const f = async () => {
+      if (n++ === 0) throw new TypeError('fetch failed');
+      return new Response(okBody, { status: 200 });
+    };
+    const r = await createShopper({ apiKey: 'k', fetchImpl: f as never, sleep: noSleep }).shop('x', catalogue);
+    expect(r.failed).toBe(false);
+  });
+
+  it('can be turned off', async () => {
+    const f = sequence(() => new Response('down', { status: 503 }));
+    const r = await createShopper({ apiKey: 'k', fetchImpl: f as never, sleep: noSleep, maxRetries: 0 }).shop('x', catalogue);
+    expect(r.failed).toBe(true);
+    expect(f.calls).toBe(1);
+  });
+});
