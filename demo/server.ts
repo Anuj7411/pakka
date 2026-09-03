@@ -142,6 +142,12 @@ createServer((req, res) => {
     return;
   }
 
+  if (url.startsWith('/site.css')) {
+    res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+    res.end(readFileSync(join(here, 'site.css'), 'utf8'));
+    return;
+  }
+
   if (url === '/' || url.startsWith('/index')) {
     const html = readFileSync(join(here, 'checkout.html'), 'utf8')
       .replaceAll('__KEY_ID__', keyId)

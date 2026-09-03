@@ -5,7 +5,7 @@
 # rzp_test_ key; the client refuses anything else at construction.
 services:
   - type: web
-    name: conformance-gate
+    name: pakka
     runtime: node
     plan: free
     buildCommand: npm install

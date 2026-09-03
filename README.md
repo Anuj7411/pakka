@@ -1,4 +1,6 @@
-# Instruction–Cart Conformance Gate
+# Pakka
+
+**Proof the agent bought what you actually asked for.**
 
 **A shopping agent bought the wrong thing. Who proves it?**
 

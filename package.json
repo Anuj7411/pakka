@@ -1,8 +1,8 @@
 {
-  "name": "conformance-gate",
+  "name": "pakka",
   "version": "0.1.0",
   "private": true,
-  "description": "Pre-authorisation conformance gate for agent-initiated purchases",
+  "description": "Proof that an AI shopping agent bought what the human actually asked for, before the order is created.",
   "license": "MIT",
   "type": "module",
   "engines": {

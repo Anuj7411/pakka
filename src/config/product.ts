@@ -6,10 +6,16 @@
  * always import PRODUCT.
  */
 export const PRODUCT = {
-  /** Working placeholder. Deliberately ugly so it cannot accidentally stick. */
-  name: 'conformance-gate',
+  /**
+   * Hindi, and everyday Gen-Z speech: confirmed, certain, solid.
+   *
+   * "Pakka?" is exactly the question this asks about a cart, and "pakka" is
+   * exactly its answer. Chosen over Sahi and Vouch, which are both already
+   * taken in Indian fintech.
+   */
+  name: 'Pakka',
   /** Certificate issuer field. Changes with the name. */
-  issuer: 'conformance-gate',
+  issuer: 'pakka',
   /**
    * Certificate schema version. Independent of the product name — bump only on
    * a breaking change to the certificate shape.
