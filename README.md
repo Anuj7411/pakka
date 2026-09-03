@@ -52,9 +52,13 @@ cp .env.example .env      # add GEMINI_API_KEY and rzp_test_ keys
 npx tsx demo/api.ts       # → http://localhost:5173
 ```
 
-One screen: the mandate, the catalogue, what the agent put in the cart, the
-gate's decision with per-line evidence, the signed certificate, and the audit
-chain.
+Two routes:
+
+- **`/`** — the argument. The problem, where the gap is, how the two layers
+  divide, the attack, and the measured evidence with its caveats.
+- **`/play`** — the playground. The mandate, the catalogue, what the agent put
+  in the cart, the gate's decision with per-line evidence, the signed
+  certificate, and the audit chain.
 
 Press **Run poisoned catalogue**. A merchant has written an instruction to
 *your* agent inside its own product description:

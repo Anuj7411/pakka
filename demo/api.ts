@@ -189,9 +189,20 @@ createServer((req, res) => {
     return;
   }
 
-  if (url === '/' || url.startsWith('/index')) {
+  if (url.startsWith('/site.css')) {
+    res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+    res.end(readFileSync(join(here, 'site.css'), 'utf8'));
+    return;
+  }
+
+  // Two routes: the landing page makes the argument, the playground runs it.
+  const page = url === '/' || url.startsWith('/index') ? 'index.html'
+    : url.startsWith('/play') ? 'console.html'
+    : null;
+
+  if (page) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(readFileSync(join(here, 'console.html'), 'utf8'));
+    res.end(readFileSync(join(here, page), 'utf8'));
     return;
   }
 

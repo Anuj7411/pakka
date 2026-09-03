@@ -3,13 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Conformance Gate</title>
+    <title>Playground — Conformance Gate</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="/site.css" />
     <style>
       /* ── Surfaces are graduated near-black, never #000 ─────────────────────
          Pure black on OLED makes edges vibrate and kills the sense of layering.
@@ -365,14 +366,27 @@
     </style>
   </head>
   <body>
-    <div class="wrap">
+    <nav>
+      <div class="inner">
+        <a class="brand" href="/"><span class="mark"></span> Conformance Gate</a>
+        <span class="ver">playground</span>
+        <div class="links">
+          <a href="/#problem">Problem</a>
+          <a href="/#how">How it works</a>
+          <a href="/#evidence">Evidence</a>
+          <a class="gh" href="https://github.com/Anuj7411/conformance-gate">★ GitHub</a>
+        </div>
+      </div>
+    </nav>
+
+    <div class="wrap wide">
       <header>
-        <div class="eyebrow"><span class="dot"></span> Razorpay AI Buildathon · Track 01</div>
-        <h1>Did the agent buy what you actually asked for?</h1>
+        <div class="eyebrow"><span class="dot"></span> Live · real modules · nothing staged</div>
+        <h1>Run the gate.</h1>
         <p class="lede">
-          Payment rails see a valid, authorised, correctly-signed transaction. They cannot see
-          that you asked for a 6-foot cable and got a 2-foot one. This gate decides that
-          <b>before the order exists</b> — and signs the answer.
+          A real model fills a cart from the instruction below, then the gate decides. Run it
+          clean, then run it against a catalogue a hostile merchant has written into — and watch
+          what changes, and what does not.
         </p>
         <div class="meta">
           <span class="badge" id="model">…</span>
