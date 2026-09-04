@@ -428,7 +428,56 @@ function json(res: ServerResponse, body: unknown, status = 200): void {
   res.end(JSON.stringify(body));
 }
 
+/**
+ * Security headers set on every response.
+ *
+ * A bare node:http server sends none, which every scanner flags on a public
+ * deployment. These are set once, before routing, so no handler can forget them.
+ *
+ * The CSP is written for what the page actually loads and NOTHING wider:
+ *   - script only from self and Razorpay Checkout;
+ *   - Google Fonts stylesheet, and its font files from gstatic;
+ *   - `style-src` allows inline because the ported design carries `style=""`
+ *     attributes verbatim from the handoff — removing them would be the
+ *     redesign the port contract forbids;
+ *   - the Razorpay family for the checkout iframe and its XHRs, and no more.
+ * `object-src 'none'`, `base-uri 'self'` and `frame-ancestors 'none'` close the
+ * usual holes; the last also makes X-Frame-Options redundant but it is sent too
+ * for the scanners that still look for it.
+ *
+ * Verified after adding: the Razorpay modal still opens and settles. A CSP that
+ * broke checkout the day before submission would be worse than none.
+ */
+const CSP = [
+  "default-src 'self'",
+  // Razorpay Checkout loads from several of its own subdomains — the SDK from
+  // checkout., risk-detection from cdn., more as they add them. We already
+  // trust Razorpay with the iframe and every XHR, so a compromise of a Razorpay
+  // origin already means a compromised checkout; a wildcard over their family
+  // adds no risk over that and stops a break the day before submission. It is
+  // still worlds tighter than the no-CSP the scanner found.
+  "script-src 'self' https://*.razorpay.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com",
+  "img-src 'self' data: https://*.razorpay.com",
+  "connect-src 'self' https://*.razorpay.com",
+  "frame-src https://*.razorpay.com",
+  "form-action 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+function setSecurityHeaders(res: ServerResponse): void {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+}
+
 createServer((req, res) => {
+  setSecurityHeaders(res);
   const url = req.url ?? '/';
   const path = url.split('?')[0] ?? '/';
 
