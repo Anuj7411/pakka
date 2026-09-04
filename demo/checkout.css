@@ -1,0 +1,570 @@
+/*
+ * Pakka checkout, v2 - the design of record, ported.
+ *
+ * Source: handoff_pakka_checkout_v2/reference/Pakka Checkout v2.dc.html. Values
+ * carried verbatim out of its inline styles into this sheet; the delivery
+ * mechanism changed and nothing else did. Prefixed `.ck-` so it cannot collide
+ * with the `.pk-` argument styles or the `.pv-` playground styles.
+ *
+ * The one idea, shared with the playground: each object takes the form of the
+ * thing it is. Progress is a stepper, the ruling is a stamp, payment is an
+ * Indian UPI checkout, the commit is a pay button with the amount on it, the
+ * summary is a receipt, the bindings are a provenance block.
+ *
+ * The three colour corrections below each cost a review round. Do not collapse
+ * them back into one red, one green and a .55 grey:
+ *   --muted        .68, not .55 (which measured 4.09:1 and failed AA)
+ *   --vermilion    rules, fills, swatches and text >= 17px ONLY
+ *   --vermilion-t  ALL Vermilion text below 17px (6.42:1 on Paper)
+ *   --go           licensed on Paper only; 4.15:1 on sunken, so sunken words are Ink
+ */
+
+.ck-page {
+  --canvas: #E6E2D6;
+  --surface: #F5F2E9;
+  --sunken: #DED9CB;
+
+  --ink: #0E100C;
+  --paper: #F5F2E9;
+  --haldi: #E8C400;
+  --vermilion: #D8341B;
+  --vermilion-t: #A8240F;
+  --vermilion-on-ink: #FF6A4D;
+  --go: #17734A;
+
+  --rule: rgba(14, 16, 12, .2);
+  --rule-strong: rgba(14, 16, 12, .42);
+  --muted: rgba(14, 16, 12, .68);
+
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: Archivo, system-ui, sans-serif;
+}
+.ck-page *, .ck-page *::before, .ck-page *::after { box-sizing: border-box; }
+
+/* ── navbar ──────────────────────────────────────────────────────────────── */
+
+.ck-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; padding: 0 32px; height: 60px; background: var(--ink);
+}
+.ck-nav-left { display: flex; align-items: center; gap: 13px; }
+.ck-nav-left svg { flex: none; display: block; }
+.ck-nav-chip {
+  padding: 4px 8px; border: 1px solid rgba(245, 242, 233, .32);
+  font: 500 10px/1.3 'Martian Mono'; letter-spacing: .09em;
+  text-transform: uppercase; color: rgba(245, 242, 233, .75);
+}
+.ck-nav-right {
+  display: flex; align-items: center; gap: 18px;
+  font: 400 11px 'Martian Mono'; color: rgba(245, 242, 233, .7);
+}
+.ck-nav-right a {
+  color: var(--paper); text-decoration: none;
+  font: 500 12px/1 'Martian Mono'; letter-spacing: .04em; text-transform: uppercase;
+  border-bottom: 2px solid transparent;
+  transition: border-color 140ms linear;
+  /* A 12px line of type is a 16px tap target. The link box is grown to the
+     44px minimum instead, so the rule still sits directly under the word. */
+  display: inline-flex; align-items: center; min-height: 44px;
+  padding: 14px 0 12px;
+}
+.ck-nav-right a:hover { border-bottom-color: var(--haldi); }
+.ck-nav-key { color: var(--haldi); }
+
+/* ── stepper: the gate IS a checkout step ────────────────────────────────── */
+
+.ck-steps {
+  display: flex; align-items: stretch;
+  background: var(--sunken); border-bottom: 1px solid var(--rule);
+}
+.ck-step {
+  display: flex; align-items: center; gap: 11px;
+  padding: 13px 24px; border-right: 1px solid var(--rule);
+  background: transparent;
+}
+.ck-step.is-current { background: var(--surface); }
+.ck-step-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: none;
+  background: rgba(14, 16, 12, .16); color: rgba(14, 16, 12, .7);
+  font: 500 10px/1 'Martian Mono';
+}
+.ck-step.is-current .ck-step-n { background: var(--ink); color: var(--paper); }
+.ck-step-label { font: 500 12.5px/1.2 Archivo; color: rgba(14, 16, 12, .72); white-space: nowrap; }
+.ck-step.is-current .ck-step-label { color: var(--ink); }
+.ck-step-state {
+  font: 500 10px/1 'Martian Mono'; letter-spacing: .07em;
+  text-transform: uppercase; white-space: nowrap; color: var(--muted);
+}
+/* on the sunken strip: green fails 4.15:1 so allow is Ink; block/failed use the
+   darkened Vermilion licensed for small text */
+.ck-state-allow, .ck-state-escalate, .ck-state-ready, .ck-state-captured { color: var(--ink); }
+.ck-state-block, .ck-state-unreachable, .ck-state-failed { color: var(--vermilion-t); }
+.ck-state-settled { color: var(--muted); }
+.ck-steps-tail { flex: 1; min-width: 0; }
+
+/* ── body ────────────────────────────────────────────────────────────────── */
+
+.ck-body {
+  display: grid; grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 10px; padding: 12px; align-items: start;
+}
+.ck-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ck-panel {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-top: 3px solid var(--ink); padding: 24px 26px 26px;
+}
+
+/* ── the stamp ───────────────────────────────────────────────────────────── */
+
+.ck-stamp { border: 1px solid var(--rule); padding: 22px 26px; }
+.ck-stamp-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.ck-stamp-row > svg { flex: none; }
+.ck-stamp-mid { flex: 1; min-width: 200px; }
+.ck-stamp-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.ck-stamp-kicker { font: 500 10.5px/1 'Martian Mono'; letter-spacing: .09em; text-transform: uppercase; }
+.ck-stamp-word { font: 600 26px/1 'Martian Mono'; letter-spacing: -.02em; }
+.ck-stamp-line { margin: 9px 0 0; font: 400 14.5px/1.5 Archivo; max-width: 640px; }
+.ck-stamp-hashes { font: 400 10.5px/1.75 'Martian Mono'; text-align: right; }
+
+.ck-stamp--allow { background: var(--surface); border-top: 3px solid var(--go); }
+.ck-stamp--allow .ck-stamp-kicker, .ck-stamp--allow .ck-stamp-hashes { color: var(--muted); }
+.ck-stamp--allow .ck-stamp-word { color: var(--go); }
+.ck-stamp--allow .ck-stamp-line, .ck-stamp--allow .ck-stamp-hashes b { color: var(--ink); }
+
+.ck-stamp--escalate { background: var(--haldi); border-top: 3px solid var(--ink); }
+.ck-stamp--escalate .ck-stamp-kicker, .ck-stamp--escalate .ck-stamp-hashes { color: rgba(14, 16, 12, .7); }
+.ck-stamp--escalate .ck-stamp-word, .ck-stamp--escalate .ck-stamp-line, .ck-stamp--escalate .ck-stamp-hashes b { color: var(--ink); }
+
+.ck-stamp--block { background: var(--ink); border-top: 8px solid var(--vermilion); }
+.ck-stamp--block .ck-stamp-kicker, .ck-stamp--block .ck-stamp-hashes { color: rgba(245, 242, 233, .62); }
+.ck-stamp--block .ck-stamp-word { color: var(--vermilion-on-ink); }
+.ck-stamp--block .ck-stamp-line, .ck-stamp--block .ck-stamp-hashes b { color: var(--paper); }
+
+/* ── payment ─────────────────────────────────────────────────────────────── */
+
+.ck-pay-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.ck-pay-head-left { display: flex; align-items: baseline; gap: 11px; }
+.ck-ord { font: 500 11px/1 'Martian Mono'; letter-spacing: .1em; text-transform: uppercase; }
+.ck-sub { font: 400 13px/1.4 Archivo; color: var(--muted); }
+.ck-flow { font: 400 10.5px/1 'Martian Mono'; color: var(--muted); }
+
+/* three tiles, pinned - never auto-fit (see the anti-pattern note) */
+.ck-upi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ck-tile {
+  border: 1px solid var(--rule); background: transparent;
+  padding: 16px 16px 15px; display: flex; flex-direction: column;
+  align-items: flex-start; gap: 12px; cursor: pointer;
+  font-family: Archivo; text-align: left; min-height: 96px;
+  transition: border-color 120ms linear, background 120ms linear;
+}
+.ck-tile:hover { border-color: var(--rule-strong); }
+.ck-tile.is-on { border-color: var(--ink); background: rgba(14, 16, 12, .04); }
+.ck-tile-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: none;
+  background: rgba(14, 16, 12, .1); color: rgba(14, 16, 12, .7);
+  font: 600 13px/1 'Martian Mono';
+}
+.ck-tile.is-on .ck-tile-mark { background: var(--ink); color: var(--paper); }
+.ck-tile-name { font: 500 14px/1.3 Archivo; color: var(--ink); }
+
+/* the NPCI callout is required, not decoration */
+.ck-or { display: flex; align-items: center; gap: 14px; margin: 16px 0 0; }
+.ck-or span:first-child, .ck-or span:last-child { flex: 1; height: 1px; background: var(--rule); }
+.ck-or-text {
+  font: 400 10.5px/1 'Martian Mono'; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap;
+}
+
+.ck-vparow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; margin-top: 16px; }
+.ck-vparow label { display: block; min-width: 0; }
+.ck-field-label {
+  display: block; font: 500 10px/1.3 'Martian Mono'; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 7px;
+}
+/* 16px is the mobile floor - do not reduce */
+.ck-input {
+  width: 100%; height: 48px; padding: 0 14px;
+  border: 1px solid var(--ink); background: var(--surface);
+  font: 400 16px 'Martian Mono'; color: var(--ink);
+}
+.ck-input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.ck-verify {
+  height: 48px; padding: 0 20px; border: 1px solid var(--rule-strong);
+  background: transparent; font: 500 11px/1 'Martian Mono';
+  letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  cursor: pointer; white-space: nowrap; transition: border-color 120ms linear, color 120ms linear;
+}
+.ck-verify.is-ok { border-color: var(--go); color: var(--go); }
+.ck-verify.is-bad { border-color: var(--vermilion); color: var(--vermilion-t); }
+.ck-vpares { display: flex; align-items: center; gap: 9px; margin-top: 11px; }
+.ck-vpadot { width: 8px; height: 8px; flex: none; background: var(--vermilion); }
+.ck-vpares.is-ok .ck-vpadot { background: var(--go); }
+.ck-vpatext { font: 400 11.5px/1.4 'Martian Mono'; color: var(--vermilion-t); }
+.ck-vpares.is-ok .ck-vpatext { color: var(--ink); }
+
+.ck-chips { display: flex; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
+.ck-chip {
+  border: 1px solid var(--rule); background: transparent; min-height: 44px;
+  padding: 0 16px; font: 400 11.5px/1.2 'Martian Mono'; color: var(--muted);
+  cursor: pointer; border-radius: 999px; transition: border-color 120ms linear, color 120ms linear;
+}
+.ck-chip:hover { border-color: var(--ink); color: var(--ink); }
+
+.ck-alt-wrap { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--rule); }
+.ck-alt-label {
+  font: 500 10.5px/1 'Martian Mono'; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+}
+.ck-alt { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ck-alt-row {
+  border: 1px solid var(--rule); padding: 13px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.ck-alt-row span:first-child { font: 400 13px/1.3 Archivo; }
+.ck-alt-row span:last-child { font: 400 10px/1 'Martian Mono'; color: var(--muted); }
+
+/* ── the commit ──────────────────────────────────────────────────────────── */
+
+.ck-commit { padding: 22px 26px; }
+.ck-paybtn {
+  width: 100%; min-height: 56px; border: 1px solid var(--ink);
+  background: var(--ink); color: var(--paper);
+  font: 500 13px/1 'Martian Mono'; letter-spacing: .09em; text-transform: uppercase;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px;
+  transition: transform 140ms cubic-bezier(.2, .7, .3, 1), background 140ms linear, box-shadow 140ms linear;
+}
+.ck-paybtn:hover:not(:disabled) { background: var(--haldi); color: var(--ink); transform: translateY(-3px); box-shadow: 0 3px 0 var(--ink); }
+.ck-paybtn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+.ck-paybtn:disabled { background: rgba(14, 16, 12, .1); color: rgba(14, 16, 12, .7); cursor: default; }
+.ck-paynote { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
+.ck-paynote span { font: 400 11px/1.5 'Martian Mono'; color: var(--muted); }
+.ck-paynote span:last-child { font-size: 10.5px; }
+
+/* trust cues sit under the commit, where hesitation happens */
+.ck-trust {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--rule);
+}
+.ck-trust-item { display: flex; align-items: flex-start; gap: 11px; }
+.ck-trust-item span { width: 4px; align-self: stretch; flex: none; }
+.ck-trust-item p { margin: 0; font: 400 11px/1.65 'Martian Mono'; color: rgba(14, 16, 12, .72); }
+.ck-trust-haldi span { background: var(--haldi); }
+.ck-trust-grey span { background: var(--rule-strong); }
+
+/* ── the blocked state: you see the checkout that did not happen ─────────── */
+
+.ck-refused-wrap { position: relative; overflow: hidden; padding: 0; }
+.ck-ghost { padding: 24px 26px 26px; opacity: .34; pointer-events: none; }
+.ck-ghost-field { height: 48px; margin-top: 16px; border: 1px solid var(--rule-strong); }
+.ck-ghost-btn { height: 56px; margin-top: 16px; border: 1px solid var(--rule-strong); background: rgba(14, 16, 12, .1); }
+.ck-refused {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; padding: 24px;
+}
+.ck-refused-card {
+  background: var(--ink); border-top: 8px solid var(--vermilion);
+  padding: 26px 30px; max-width: 520px;
+}
+.ck-refused-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.ck-refused-kicker { font: 500 10.5px/1 'Martian Mono'; letter-spacing: .09em; text-transform: uppercase; color: rgba(245, 242, 233, .62); }
+.ck-refused-word { font: 600 34px/1 'Martian Mono'; color: var(--vermilion-on-ink); letter-spacing: -.02em; }
+.ck-refused-card p { margin: 0; font: 400 13.5px/1.7 'Martian Mono'; color: rgba(245, 242, 233, .78); }
+.ck-refused-card p b { color: var(--paper); font-weight: 400; }
+.ck-refused-link {
+  display: inline-flex; align-items: center; margin-top: 20px; min-height: 48px;
+  padding: 0 22px; border: 1px solid rgba(245, 242, 233, .42); background: transparent;
+  color: var(--paper); font: 500 11px/1 'Martian Mono'; letter-spacing: .08em;
+  text-transform: uppercase; text-decoration: none; transition: background 140ms linear, color 140ms linear;
+}
+.ck-refused-link:hover { background: var(--paper); color: var(--ink); }
+
+/* ── outcomes ────────────────────────────────────────────────────────────── */
+
+.ck-out--failed { border-top: 3px solid var(--vermilion); }
+.ck-out--captured { border-top: 3px solid var(--go); }
+.ck-out-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.ck-out-word { font: 600 30px/1 'Martian Mono'; }
+.ck-out--failed .ck-out-word { color: var(--vermilion); }
+.ck-out--captured .ck-out-word { color: var(--go); }
+.ck-out-code { font: 400 12px/1.4 'Martian Mono'; color: var(--muted); }
+/* pinned to four, stepping only through divisors of four */
+.ck-fields {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--rule); border-left: 0;
+}
+.ck-field { padding: 13px 14px; border-left: 1px solid var(--rule); }
+.ck-field-k { font: 500 10px/1.3 'Martian Mono'; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ck-field-v { margin-top: 8px; font: 400 12.5px/1.45 'Martian Mono'; overflow-wrap: anywhere; }
+.ck-field-v.is-bad { color: var(--vermilion-t); }
+.ck-field-v.is-good { color: var(--go); }
+.ck-out-prose { margin: 16px 0 0; font: 400 14.5px/1.55 Archivo; max-width: 660px; }
+.ck-out-btns { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.ck-btn {
+  min-height: 48px; padding: 0 22px; border: 1px solid var(--rule-strong);
+  background: transparent; color: var(--muted);
+  font: 500 11px/1 'Martian Mono'; letter-spacing: .08em; text-transform: uppercase;
+  cursor: pointer; transition: transform 140ms cubic-bezier(.2, .7, .3, 1), background 140ms linear, color 140ms linear, box-shadow 140ms linear;
+}
+.ck-btn:hover { border-color: var(--ink); color: var(--ink); transform: translateY(-3px); box-shadow: 0 3px 0 var(--rule); }
+.ck-btn:active { transform: translateY(0); box-shadow: none; }
+.ck-btn--solid { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.ck-btn--solid:hover { background: var(--haldi); color: var(--ink); box-shadow: 0 3px 0 var(--ink); }
+
+/* ── the summary rail ────────────────────────────────────────────────────── */
+
+.ck-rail { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ck-card { background: var(--surface); border: 1px solid var(--rule); border-top: 3px solid var(--ink); }
+.ck-sum-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px dashed var(--rule-strong);
+}
+.ck-sum-head b { font: 500 10.5px/1 'Martian Mono'; letter-spacing: .09em; text-transform: uppercase; }
+.ck-sum-head span { font: 400 10.5px/1 'Martian Mono'; color: var(--muted); }
+.ck-sum-line { padding: 15px 18px; border-bottom: 1px dashed var(--rule); }
+.ck-sum-line-name { font: 400 13px/1.45 'Martian Mono'; }
+.ck-sum-line-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.ck-sum-line-meta span:first-child { font: 400 11px/1.3 'Martian Mono'; color: var(--muted); }
+.ck-sum-line-meta span:last-child { font: 500 13px/1 'Martian Mono'; font-variant-numeric: tabular-nums; }
+.ck-sum-total-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 9px 18px; font: 400 11.5px/1.4 'Martian Mono'; color: var(--muted);
+}
+.ck-sum-total-row span:last-child { font-variant-numeric: tabular-nums; color: var(--ink); }
+.ck-amount {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 15px 18px 16px; border-top: 2px solid var(--ink);
+}
+.ck-amount b { font: 500 10.5px/1 'Martian Mono'; letter-spacing: .09em; text-transform: uppercase; }
+.ck-amount span { font: 600 26px/1 'Martian Mono'; font-variant-numeric: tabular-nums; }
+
+.ck-bind { padding: 16px 18px; }
+.ck-bind-label { font: 500 10.5px/1 'Martian Mono'; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: 13px; }
+.ck-bind-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-top: 1px solid var(--rule); }
+.ck-bind-k { font: 500 10px/1.5 'Martian Mono'; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ck-bind-v { font: 400 11px/1.5 'Martian Mono'; overflow-wrap: anywhere; }
+.ck-bind-v.brk { word-break: break-all; }
+.ck-bind-v.is-allow { color: var(--go); }
+.ck-bind-v.is-block { color: var(--vermilion-t); }
+
+/* ── responsive: every track count pinned, stepping through divisors ─────── */
+
+@media (max-width: 1180px) { .ck-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1080px) {
+  .ck-body { grid-template-columns: 1fr; }
+  .ck-rail { position: static; }
+}
+@media (max-width: 760px) {
+  .ck-upi { grid-template-columns: 1fr; }
+  .ck-alt { grid-template-columns: 1fr; }
+  .ck-steps { flex-wrap: wrap; }
+  .ck-trust { grid-template-columns: 1fr; }
+  .ck-nav { flex-wrap: wrap; height: auto; padding: 10px 16px; }
+  .ck-panel, .ck-stamp, .ck-commit { padding-left: 18px; padding-right: 18px; }
+  .ck-vparow { grid-template-columns: 1fr; }
+  .ck-verify { width: 100%; }
+}
+@media (max-width: 520px) { .ck-fields { grid-template-columns: 1fr; } }
+
+@media (prefers-reduced-motion: reduce) { .ck-page * { transition: none !important; } }
+
+/* ── motion ─────────────────────────────────────────────────────────────
+ * Same three rules the playground keeps to. Entrance motion is armed on view
+ * entry, never on paint, because `render()` replaces this subtree and a
+ * payment moves through four states. After that only changed things move, and
+ * nothing loops except while the gate or the payment is genuinely working.
+ *
+ * One extra rule here: on a checkout, motion must never imply progress that
+ * has not happened. Nothing animates toward "paid" until the server has said
+ * so, and the refused state animates in and then holds completely still.
+ */
+
+.ck-page.is-enter .ck-nav { animation: ck-nav-drop 420ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes ck-nav-drop {
+  from { transform: translateY(-100%); }
+  to { transform: none; }
+}
+.ck-page.is-enter .ck-nav-right > * { animation: ck-nav-item 380ms cubic-bezier(.2, .7, .3, 1) both; }
+.ck-page.is-enter .ck-nav-right > :nth-child(1) { animation-delay: 190ms; }
+.ck-page.is-enter .ck-nav-right > :nth-child(2) { animation-delay: 240ms; }
+.ck-page.is-enter .ck-nav-right > :nth-child(3) { animation-delay: 290ms; }
+@keyframes ck-nav-item {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.ck-page.is-enter .ck-nav-left svg { animation: ck-seal-set 520ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes ck-seal-set {
+  from { opacity: 0; transform: translateX(-8px) scale(.86); }
+  to { opacity: 1; transform: none; }
+}
+.ck-page.is-enter .ck-nav-chip { animation: ck-chip-in 460ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes ck-chip-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The link rule is wiped in from the left, and the word opens up slightly. */
+.ck-nav-right a { position: relative; transition: letter-spacing 180ms cubic-bezier(.2, .7, .3, 1); }
+.ck-nav-right a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  height: 2px;
+  background: var(--haldi);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms cubic-bezier(.2, .7, .3, 1);
+}
+.ck-nav-right a:hover { letter-spacing: .1em; border-bottom-color: transparent; }
+.ck-nav-right a:hover::after, .ck-nav-right a:focus-visible::after { transform: scaleX(1); }
+
+/* The stepper is read left to right, so it arrives left to right. */
+.ck-page.is-enter .ck-step {
+  animation: ck-step-in 400ms cubic-bezier(.2, .7, .3, 1) both;
+  animation-delay: calc(var(--i, 0) * 90ms + 220ms);
+}
+@keyframes ck-step-in {
+  from { opacity: 0; transform: translateX(-14px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The stamp is the page's verdict. The word lands and the coloured rule above
+   it is uncovered left to right, the same gesture the playground verdict uses,
+   because they are the same fact shown twice. */
+.ck-page.is-enter .ck-stamp-word { animation: ck-word-land 480ms cubic-bezier(.2, .7, .3, 1) 420ms both; }
+@keyframes ck-word-land {
+  0% { opacity: 0; transform: translateY(10px) scale(.94); }
+  60% { opacity: 1; transform: translateY(0) scale(1.03); }
+  100% { transform: none; }
+}
+.ck-page.is-enter .ck-stamp { position: relative; }
+.ck-page.is-enter .ck-stamp::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  height: 3px;
+  background: var(--canvas);
+  transform-origin: right;
+  animation: ck-band-uncover 560ms cubic-bezier(.2, .7, .3, 1) 360ms both;
+  pointer-events: none;
+}
+.ck-page.is-enter .ck-stamp--block::after { top: -8px; height: 8px; }
+@keyframes ck-band-uncover {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Panels and the rail cascade in under the stamp. */
+.ck-page.is-enter .ck-main > :nth-child(n + 2),
+.ck-page.is-enter .ck-rail > * {
+  animation: ck-panel-in 500ms cubic-bezier(.2, .7, .3, 1) both;
+}
+.ck-page.is-enter .ck-main > :nth-child(2) { animation-delay: 480ms; }
+.ck-page.is-enter .ck-main > :nth-child(3) { animation-delay: 560ms; }
+.ck-page.is-enter .ck-rail > :nth-child(1) { animation-delay: 520ms; }
+.ck-page.is-enter .ck-rail > :nth-child(2) { animation-delay: 600ms; }
+@keyframes ck-panel-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Rows are dealt rather than blinked. */
+.ck-page.is-enter .ck-tile,
+.ck-page.is-enter .ck-sum-line,
+.ck-page.is-enter .ck-bind-row,
+.ck-page.is-enter .ck-field {
+  animation: ck-row-in 340ms cubic-bezier(.2, .7, .3, 1) both;
+  animation-delay: calc(min(var(--i, 0), 8) * 46ms + 620ms);
+}
+@keyframes ck-row-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* A UPI tile lifts under the cursor the way the run button does, so the two
+   surfaces feel like one product. */
+.ck-tile {
+  transition: transform 140ms cubic-bezier(.2, .7, .3, 1),
+              border-color 140ms linear, box-shadow 140ms linear, background 140ms linear;
+}
+.ck-tile:hover { transform: translateY(-3px); box-shadow: 0 3px 0 var(--ink); border-color: var(--ink); }
+.ck-tile:active { transform: translateY(0); box-shadow: none; }
+
+/* The pay button carries the same Haldi wipe as the playground's run button.
+   It is a wipe and not a fill because the label must stay legible through it. */
+.ck-paybtn { position: relative; overflow: hidden; }
+.ck-paybtn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--haldi);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 260ms cubic-bezier(.2, .7, .3, 1);
+}
+.ck-paybtn:hover:not(:disabled)::before { transform: scaleX(1); }
+.ck-paybtn-label { position: relative; }
+.ck-paybtn:hover:not(:disabled) { color: var(--ink); }
+/* While a collect request is out, the disabled button breathes. It is the one
+   place a loop is honest: something really is pending in someone's UPI app. */
+.ck-paybtn:disabled { animation: ck-pending 1.6s ease-in-out infinite; }
+@keyframes ck-pending {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .62; }
+}
+
+/* Verify carries its answer in, from the side the field is on. */
+.ck-vpares { animation: ck-vpa-in 300ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes ck-vpa-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The refusal arrives once and then holds absolutely still. Nothing about a
+   blocked checkout should keep moving: stillness is the point being made. */
+.ck-page.is-enter .ck-refused-card { animation: ck-refuse-in 520ms cubic-bezier(.2, .7, .3, 1) 420ms both; }
+@keyframes ck-refuse-in {
+  from { opacity: 0; transform: scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-page.is-enter .ck-nav,
+  .ck-page.is-enter .ck-nav-right > *,
+  .ck-page.is-enter .ck-nav-left svg,
+  .ck-page.is-enter .ck-nav-chip,
+  .ck-page.is-enter .ck-step,
+  .ck-page.is-enter .ck-stamp-word,
+  .ck-page.is-enter .ck-stamp::after,
+  .ck-page.is-enter .ck-main > :nth-child(n + 2),
+  .ck-page.is-enter .ck-rail > *,
+  .ck-page.is-enter .ck-tile,
+  .ck-page.is-enter .ck-sum-line,
+  .ck-page.is-enter .ck-bind-row,
+  .ck-page.is-enter .ck-field,
+  .ck-page.is-enter .ck-refused-card,
+  .ck-vpares,
+  .ck-paybtn:disabled { animation: none; }
+  .ck-nav-right a, .ck-nav-right a::after, .ck-tile, .ck-paybtn::before { transition: none; }
+  .ck-nav-right a:hover { letter-spacing: .04em; }
+}
+
+/* Keyboard focus. An Ink ring everywhere, a Paper ring on the Ink-filled
+   controls where an Ink ring would be invisible. */
+.ck-page :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.ck-paybtn:focus-visible,
+.ck-nav-right a:focus-visible,
+.ck-btn--solid:focus-visible { outline-color: var(--paper); outline-offset: 3px; }
+

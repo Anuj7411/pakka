@@ -305,7 +305,7 @@ nav .links a:hover { color: var(--fg); }
 .stat-cap { margin-top: var(--sp-3); font-size: 14px; line-height: 20px; color: var(--fg-2); }
 .stat-ci { margin-top: var(--sp-2); font-family: var(--mono); font-size: 11px; color: var(--fg-3); }
 
-/* ═══ Lanes — the positioning row ══════════════════════════════════════════ */
+/* ═══ Lanes - the positioning row ══════════════════════════════════════════ */
 
 .lane {
   padding: var(--sp-5) var(--sp-4);

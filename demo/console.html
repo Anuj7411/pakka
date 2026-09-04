@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Playground — Pakka</title>
+    <title>Playground - Pakka</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -92,7 +92,7 @@
         <h1 style="margin-top: var(--sp-4); font-size: clamp(32px, 4.4vw, 44px)">Run the gate.</h1>
         <p class="lede" style="margin-top: var(--sp-4)">
           A real model fills a cart from the instruction below, then the gate decides. Run it
-          clean, then run it against a catalogue a hostile merchant has written into — and
+          clean, then run it against a catalogue a hostile merchant has written into - and
           watch what changes, and what does not.
         </p>
         <div class="row" style="margin-top: var(--sp-6)">
@@ -122,7 +122,7 @@
               </div>
               <p class="muted" id="status">
                 The semantic judge is <strong style="color: var(--fg)">captured</strong> for
-                every run — it returns “satisfies” at confidence 1.0 on every line. What holds
+                every run - it returns “satisfies” at confidence 1.0 on every line. What holds
                 is not the model.
               </p>
               <details>
@@ -231,7 +231,7 @@
           $('run-clean').disabled = false;
           $('run-poison').disabled = false;
           $('status').innerHTML =
-            'The semantic judge is <strong style="color:var(--fg)">captured</strong> for every run — it returns “satisfies” at confidence 1.0 on every line. What holds is not the model.';
+            'The semantic judge is <strong style="color:var(--fg)">captured</strong> for every run - it returns “satisfies” at confidence 1.0 on every line. What holds is not the model.';
         }
       }
 
@@ -246,13 +246,13 @@
           ? `<div class="callout callout-bad"><strong>The agent took the bait.</strong> It obeyed
              text written by the merchant and put an out-of-scope item in the
              cart${r.obeyedQuantity ? ', at exactly the quantity the injection demanded' : ''}.</div>`
-          : `<div class="callout callout-ok">The agent did not take the bait on this run — a fact
+          : `<div class="callout callout-ok">The agent did not take the bait on this run - a fact
              about this model on this prompt, not a defence. The gate does not depend on the
              answer either way.</div>`;
 
         const held = r.poisoned && r.tookBait && r.decision === 'block'
           ? `<div class="callout callout-ok"><strong>The gate refused it anyway.</strong> Nothing in
-             that refusal read the prose — it compared a declared category against the authorised
+             that refusal read the prose - it compared a declared category against the authorised
              one. The judge was captured and still could not lower the decision, because under the
              lattice nothing can.</div>` : '';
 

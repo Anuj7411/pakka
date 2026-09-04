@@ -95,100 +95,229 @@
 .pv-nav-policy { padding-left: 20px; border-left: 1px solid rgba(245, 242, 233, .2); }
 .pv-nav-signed { color: var(--haldi); }
 
-/* ── run bar ───────────────────────────────────────────────────────────── */
+/* ── the run: a tab strip, and one panel with one button ────────────────
+ *
+ * Built from what shipped dashboards do, not from taste. Three rules did the
+ * work, and each of them killed something that was here before:
+ *
+ *   Tabs carry no controls. A tab list is 2-7 parallel views of one context
+ *   with short labels; putting a button in each tab made it a toolbar and
+ *   nobody pressed it. Six tabs here, five directions plus the sandbox.
+ *
+ *   The tab list sits against its panel with a connecting border. The active
+ *   tab takes the panel's surface and drops its bottom rule, so the two read
+ *   as one object rather than as a strip floating above a card.
+ *
+ *   One primary button per step, filled, highest contrast, top right of the
+ *   content area. Five identical buttons down a column broke that rule twice
+ *   over: five primaries, and none of them where a primary is looked for.
+ */
 
-.pv-runbar {
+.pv-tabs {
   display: flex;
   align-items: stretch;
   background: var(--sunken);
   border-bottom: 1px solid var(--rule);
+  /* The strip scrolls rather than wraps when six tabs stop fitting: a wrapped
+     tab list stops reading as one row of peers. */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.pv-runbar-label {
-  display: flex;
-  align-items: center;
-  padding: 0 20px 0 32px;
-  font: 500 11px/1 'Martian Mono';
-  letter-spacing: .09em;
-  text-transform: uppercase;
-  color: var(--muted);
-  white-space: nowrap;
-}
+.pv-tabs::-webkit-scrollbar { display: none; }
+
 .pv-tab {
-  flex: 1;
+  /* Equal share of the strip, allowed to shrink: six tabs of equal width read
+     as six peers, and the title ellipsis before the strip ever scrolls. */
+  flex: 1 1 0;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 13px 20px 12px;
   border: 0;
   border-left: 1px solid var(--rule-18);
   border-bottom: 3px solid transparent;
   background: transparent;
-  padding: 13px 16px;
-  text-align: left;
   cursor: pointer;
+  text-align: left;
   font-family: Archivo;
-  /* the lift the previous run buttons had, brought back: hover raises the tab
-     with a hard drop shadow, the press settles it. */
-  transition: background 120ms linear, transform 140ms cubic-bezier(.2, .7, .3, 1), box-shadow 140ms linear;
   position: relative;
+  transition: background 120ms linear, color 120ms linear, border-color 120ms linear;
 }
-.pv-tab:hover {
-  background: var(--surface);
-  transform: translateY(-3px);
-  box-shadow: 0 3px 0 var(--ink);
-  z-index: 1;
-}
-.pv-tab:active { transform: translateY(0); box-shadow: none; }
+.pv-tab:first-child { border-left: 0; }
+.pv-tab:hover { background: rgba(14, 16, 12, .05); }
+/* The connecting border: the selected tab is the panel, continued upward. */
 .pv-tab.is-active {
   background: var(--surface);
-  border-bottom-color: var(--ink);
+  border-bottom-color: var(--surface);
+  margin-bottom: -1px;
+  padding-bottom: 13px;
 }
-.pv-tab-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 5px;
-  padding-left: 15px;
+.pv-tab.is-active::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--ink);
 }
-.pv-tab-cycle {
-  font: 500 9px/1 'Martian Mono';
-  letter-spacing: .06em;
-  color: var(--muted);
-  border: 1px solid var(--rule-18);
-  padding: 2px 5px;
-  white-space: nowrap;
-}
-.pv-tab.is-active .pv-tab-cycle { border-color: var(--rule-strong); color: var(--ink); }
-.pv-tab-top { display: flex; align-items: center; gap: 8px; }
+
+/* The sandbox is not a sixth direction, it is a different kind of thing: the
+   five to its left are runs we prepared, this one is a run you assemble. A
+   full-strength rule says so without a second row of chrome. */
+.pv-tab--sandbox { border-left-color: var(--rule-strong); }
+
 .pv-tab-dot { width: 7px; height: 7px; flex: none; }
+.pv-tab-dot--open { border: 1.5px solid var(--rule-strong); background: transparent; }
 .pv-tab-title {
   font: 500 13.5px/1.3 Archivo;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 .pv-tab.is-active .pv-tab-title { color: var(--ink); }
 .pv-tab-verdict {
   font: 500 10px/1 'Martian Mono';
   letter-spacing: .08em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
-.pv-runbtn {
-  border: 0;
-  border-left: 1px solid var(--rule-strong);
-  border-bottom: 3px solid transparent;
-  background: transparent;
-  padding: 13px 20px;
+.pv-tab-verdict--any { color: var(--muted); }
+/* Dot and title share the first line, the verdict sits under it. Declared as a
+   grid on the button so the three parts line up across all six tabs. */
+.pv-tab {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 6px;
+  align-items: center;
+}
+.pv-tab-dot { grid-column: 1; grid-row: 1; }
+.pv-tab-title { grid-column: 2; grid-row: 1; }
+.pv-tab-verdict { grid-column: 2; grid-row: 2; }
+
+/* ── the panel ─────────────────────────────────────────────────────────── */
+
+.pv-runs { border-top: 0; }
+.pv-runs .pv-head-row { margin-bottom: 20px; }
+
+.pv-runpanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 28px;
+}
+.pv-runpanel-text { min-width: 0; }
+.pv-runpanel-head { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+.pv-runpanel-dot { width: 9px; height: 9px; flex: none; }
+.pv-runs .pv-runpanel-dot { align-self: center; }
+.pv-runpanel-title {
+  margin: 0;
+  font: 600 clamp(21px, 2.2vw, 27px)/1.15 Archivo;
+  letter-spacing: -.015em;
+  color: var(--ink);
+}
+.pv-runpanel-verdict {
+  font: 500 12px/1 'Martian Mono';
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.pv-runpanel-blurb {
+  margin: 10px 0 0;
+  font: 400 14.5px/1.55 Archivo;
+  color: var(--muted);
+  max-width: 68ch;
+}
+.pv-runpanel-domain {
+  margin-top: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pv-runpanel-domain-k {
+  font: 500 9.5px/1 'Martian Mono';
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pv-runpanel-domain-v { font: 500 14px/1.2 'Martian Mono'; color: var(--ink); }
+.pv-runpanel-domain-note {
+  font: 400 11px/1.3 'Martian Mono';
+  color: var(--muted);
+  padding-left: 10px;
+  border-left: 1px solid var(--rule-18);
+}
+
+/* The one primary. Landing-page form: Ink fill, uppercase mono, a 3px lift
+   onto a hard shadow, and a Haldi wipe that crosses under the label rather
+   than replacing it. */
+.pv-runcta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 24px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
   cursor: pointer;
-  font: 500 11px/1 'Martian Mono';
+  font: 500 12px/1 'Martian Mono';
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+  transition: transform 140ms cubic-bezier(.2, .7, .3, 1),
+              background 140ms linear, color 140ms linear,
+              border-color 140ms linear, box-shadow 140ms linear;
+}
+.pv-runcta:hover {
+  background: var(--haldi);
+  color: var(--ink);
+  transform: translateY(-3px);
+  box-shadow: 0 3px 0 var(--ink);
+}
+.pv-runcta:active { transform: translateY(0); box-shadow: none; }
+.pv-runcta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--haldi);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 240ms cubic-bezier(.2, .7, .3, 1);
+}
+.pv-runcta:hover::before { transform: scaleX(1); }
+.pv-runcta > * { position: relative; }
+.pv-runcta-seal { display: flex; flex: none; }
+/* While the gate is genuinely working, the seal breathes. Nothing spins: a
+   spinner implies progress nobody is measuring. */
+.pv-runcta.is-busy .pv-runcta-seal { animation: pv-seal-breathe 1.4s ease-in-out infinite; }
+@keyframes pv-seal-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .38; }
+}
+
+/* Reset is the only other control on the panel, and it is quiet. */
+.pv-runbtn {
+  border: 1px solid var(--rule);
+  background: transparent;
+  padding: 0 16px;
+  min-height: 44px;
+  cursor: pointer;
+  font: 500 10.5px/1 'Martian Mono';
   letter-spacing: .09em;
   text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
-  transition: background 120ms linear;
+  transition: background 120ms linear, color 120ms linear, border-color 120ms linear;
 }
-.pv-runbtn:hover { background: rgba(14, 16, 12, .04); }
-.pv-runbtn.is-active { background: var(--surface); border-bottom-color: var(--ink); color: var(--ink); }
-.pv-runbtn--reset { border-left-color: var(--rule-18); }
+.pv-runbtn:hover { background: rgba(14, 16, 12, .06); color: var(--ink); border-color: var(--rule-strong); }
 
 .pv-dot-allow, .pv-verdict-allow { color: var(--go); }
 .pv-dot-escalate, .pv-verdict-escalate { color: var(--ink); }   /* on sunken, Haldi text fails; ink */
@@ -198,21 +327,17 @@
 .pv-bg-escalate { background: var(--haldi); }
 .pv-bg-block { background: var(--vermilion); }
 
-/* ── sandbox strip ─────────────────────────────────────────────────────── */
+/* ── sandbox fields ────────────────────────────────────────────────────── */
 
-.pv-sandbox {
-  background: var(--sunken);
-  border-bottom: 1px solid var(--rule);
-  padding: 26px 32px;
-}
-.pv-sandbox-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
-.pv-sandbox-head b { font: 500 11px/1 'Martian Mono'; letter-spacing: .1em; text-transform: uppercase; }
-.pv-sandbox-head span { font: 400 13px/1.4 Archivo; color: var(--muted); }
+/* The sandbox is the sixth tab, so it renders inside the run panel and shares
+   that panel's one button. Four columns, not five: the fifth used to hold a
+   run button of its own. */
 .pv-sandbox-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr) auto;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr);
   gap: 16px;
   align-items: end;
+  margin-top: 18px;
 }
 .pv-sandbox-grid label { display: block; min-width: 0; }
 .pv-sandbox-grid label > span {
@@ -233,20 +358,6 @@
   color: var(--ink);
 }
 .pv-input:focus-visible, .pv-select:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-.pv-sandbox-run {
-  height: 44px;
-  padding: 0 26px;
-  border: 1px solid var(--ink);
-  background: var(--ink);
-  color: var(--paper);
-  font: 500 11px/1 'Martian Mono';
-  letter-spacing: .09em;
-  text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.pv-sandbox-run:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
-
 /* ── panels ────────────────────────────────────────────────────────────── */
 
 .pv-panel {
@@ -260,6 +371,7 @@
 .pv-panel--last { margin-bottom: 12px; }
 
 .pv-ordinal {
+  white-space: nowrap;
   font: 500 11px/1 'Martian Mono';
   letter-spacing: .1em;
   text-transform: uppercase;
@@ -272,7 +384,10 @@
   text-transform: uppercase;
   color: var(--muted);
 }
-.pv-head { display: flex; align-items: baseline; gap: 11px; }
+/* The ordinal never breaks across lines. The head wraps around it instead, so
+   a narrow viewport splits "00 THE RUN" from its subtitle rather than
+   splitting the words of the ordinal itself. */
+.pv-head { display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap; }
 .pv-head-row {
   display: flex;
   align-items: baseline;
@@ -599,9 +714,6 @@
   .pv-instruction, .pv-cartzone, .pv-certzone { padding-left: 18px; padding-right: 18px; }
 }
 @media (max-width: 640px) {
-  .pv-runbar { flex-wrap: wrap; }
-  .pv-runbar-label { width: 100%; padding: 10px 16px; }
-  .pv-tab { flex: 1 1 40%; }
   .pv-sandbox-grid { grid-template-columns: 1fr; }
   /* the verdict row must stack: word, then lattice, then detail, then reserve */
   .pv-verdict-row { gap: 18px; }
@@ -613,94 +725,251 @@
 }
 @media (max-width: 520px) { .pv-compare { grid-template-columns: 1fr; } }
 
-@media (prefers-reduced-motion: reduce) {
-  .pv-tab, .pv-runbtn { transition: none; }
+/* The tabs share the strip and let their labels ellipsis while that still
+   leaves a readable label. Below 640 they stop shrinking and the strip scrolls
+   instead, because a tab list that wraps stops reading as a row of peers and a
+   tab clipped to three characters stops being a label. */
+/* Six tabs need about 130px each to hold a label like "The honest cart"
+   without clipping it. Below that the padding and the type step down before
+   the label does. */
+@media (max-width: 980px) {
+  .pv-tab { padding-left: 13px; padding-right: 13px; }
+  .pv-tab-title { font-size: 12.5px; }
+  .pv-tab-verdict { font-size: 9.5px; }
 }
-
-/* ── checkout, v2 ───────────────────────────────────────────────────────────
- * The checkout rebuilt in the same design system as the playground, so the two
- * read as one product. Objects keep their forms: the cart is a receipt, the
- * order facts are a document, the outcome is a stamped colour band.
- */
-.pv-co-hero { padding: 28px 32px; }
-.pv-co-h { margin: 0 0 8px; font: 600 clamp(30px, 3.4vw, 44px)/1.05 Archivo; letter-spacing: -.02em; }
-.pv-co-sub { margin: 0; font: 400 16px/1.55 Archivo; color: var(--muted); max-width: 640px; }
-
-/* the order facts, as a document under the receipt */
-.pv-co-facts { margin-top: 18px; border-top: 1px solid var(--rule-strong); }
-.pv-co-fact {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--rule-18);
+@media (max-width: 720px) {
+  .pv-runpanel { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .pv-runcta { width: 100%; justify-content: center; }
 }
-.pv-co-fact-k { font: 500 10px/1.4 'Martian Mono'; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
-.pv-co-fact-v { font: 400 12px/1.5 'Martian Mono'; text-align: right; overflow-wrap: anywhere; }
-.pv-co-note { margin: 16px 0 0; font: 400 11px/1.6 'Martian Mono'; color: var(--muted); max-width: 620px; }
-.pv-co-prose { margin: 16px 0 0; font: 400 14px/1.55 Archivo; max-width: 620px; }
-
-/* the empty state */
-.pv-co-empty {
-  border: 1px dashed var(--rule-strong);
-  padding: clamp(28px, 4vw, 48px);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  align-items: flex-start;
-}
-.pv-co-empty svg { opacity: .5; }
-.pv-co-empty p { margin: 0; max-width: 560px; font: 400 16px/1.55 Archivo; color: var(--muted); }
-.pv-co-empty-btns { display: flex; gap: 12px; flex-wrap: wrap; }
-
-/* buttons: the run-tab lift, as a real button */
-.pv-co-btn {
-  border: 1px solid var(--rule-strong);
-  background: transparent;
-  color: var(--ink);
-  min-height: 46px;
-  padding: 0 22px;
-  font: 500 11px/1 'Martian Mono';
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  transition: transform 140ms cubic-bezier(.2, .7, .3, 1), background 140ms linear, color 140ms linear, box-shadow 140ms linear, border-color 140ms linear;
-}
-.pv-co-btn:hover { border-color: var(--ink); transform: translateY(-3px); box-shadow: 0 3px 0 var(--rule); }
-.pv-co-btn:active { transform: translateY(0); box-shadow: none; }
-.pv-co-btn--solid { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.pv-co-btn--solid:hover { background: var(--haldi); color: var(--ink); box-shadow: 0 3px 0 var(--ink); }
-.pv-co-btn--onink { border-color: rgba(245, 242, 233, .4); color: var(--paper); }
-.pv-co-btn--onink:hover { background: var(--paper); color: var(--ink); box-shadow: none; }
-.pv-co-btn--pay { min-height: 48px; padding: 0 26px; }
-
-/* the UPI form */
-.pv-co-vpa-label { display: block; font: 500 10px/1.4 'Martian Mono'; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-.pv-co-chips { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-.pv-co-chip { border: 1px solid var(--rule-18); background: transparent; color: var(--muted); min-height: 36px; padding: 0 12px; font: 400 11px/1 'Martian Mono'; }
-.pv-co-chip:hover { border-color: var(--ink); color: var(--ink); }
-.pv-co-payrow { display: flex; align-items: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
-.pv-co-paystatus { font: 400 12px/1.5 'Martian Mono'; color: var(--muted); }
-
-/* outcome bands - the same colour language as the verdict */
-.pv-co-band { padding: 28px 32px; }
-.pv-co-band--block { background: var(--ink); border-top: 8px solid var(--vermilion); color: var(--paper); }
-.pv-co-band--block .pv-co-band-ord { font: 500 11px/1 'Martian Mono'; letter-spacing: .1em; text-transform: uppercase; color: rgba(245, 242, 233, .6); margin-bottom: 12px; }
-.pv-co-band--block .pv-co-band-word { font: 600 clamp(30px, 3.2vw, 44px)/1 'Martian Mono'; color: var(--vermilion-on-ink); letter-spacing: -.02em; }
-.pv-co-band--block p { margin: 18px 0 0; font: 400 15px/1.6 'Martian Mono'; color: rgba(245, 242, 233, .78); max-width: 640px; }
-.pv-co-band--block code { color: var(--paper); }
-.pv-co-band--block .pv-co-btn--onink { margin-top: 20px; }
-
-.pv-co-band--fail { border-top: 3px solid var(--vermilion); padding-inline: 0; }
-.pv-co-band--fail .pv-co-band-word { font: 500 30px/1 'Martian Mono'; color: var(--vermilion); }
-.pv-co-band--ok { border-top: 3px solid var(--go); padding-inline: 0; }
-.pv-co-band--ok .pv-co-band-word { font: 500 30px/1 'Martian Mono'; color: var(--go); }
-.pv-co-band-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
-.pv-co-band-code { font: 400 13px/1 'Martian Mono'; color: var(--muted); }
-.pv-co-rows { border-top: 1px solid var(--rule-18); }
-
 @media (max-width: 640px) {
-  .pv-co-fact { flex-direction: column; gap: 2px; }
-  .pv-co-fact-v { text-align: left; }
+  .pv-tab { flex: 0 0 auto; padding-left: 16px; padding-right: 16px; }
+  .pv-runs .pv-head-row { margin-bottom: 16px; }
+  .pv-runpanel-domain-note { padding-left: 0; border-left: 0; flex: 1 1 100%; }
+  .pv-sandbox-grid { grid-template-columns: 1fr; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-runcta, .pv-runbtn { transition: none; }
+  .pv-runcta::before { transition: none; }
+  .pv-runcta.is-busy .pv-runcta-seal { animation: none; }
+}
+
+/* ── motion ─────────────────────────────────────────────────────────────
+ * Three rules this layer keeps to.
+ *
+ * 1. Entrance motion is armed on view entry, never on paint. `render()`
+ *    replaces this whole subtree and a single run calls it three times, so
+ *    anything tied to paint would re-animate under a viewer who is reading.
+ * 2. After the entrance, the only things that move are the things that
+ *    changed: a new certificate, a longer chain, a list that just opened.
+ * 3. Nothing loops except while the gate is genuinely working. A permanent
+ *    animation is a page fidgeting at you.
+ */
+
+/* The navbar drops in ahead of everything, then its right-hand items follow. */
+.pv-play.is-enter .pv-nav { animation: pv-nav-drop 420ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes pv-nav-drop {
+  from { transform: translateY(-100%); }
+  to { transform: none; }
+}
+.pv-play.is-enter .pv-nav-right > * {
+  animation: pv-nav-item 380ms cubic-bezier(.2, .7, .3, 1) both;
+}
+.pv-play.is-enter .pv-nav-right > :nth-child(1) { animation-delay: 200ms; }
+.pv-play.is-enter .pv-nav-right > :nth-child(2) { animation-delay: 250ms; }
+.pv-play.is-enter .pv-nav-right > :nth-child(3) { animation-delay: 300ms; }
+.pv-play.is-enter .pv-nav-right > :nth-child(4) { animation-delay: 350ms; }
+@keyframes pv-nav-item {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.pv-play.is-enter .pv-nav-left svg { animation: pv-seal-set 520ms cubic-bezier(.2, .7, .3, 1) both; }
+/* The mark settles into its frame rather than fading. No rotation: the chamfer
+   is a fixed corner of the brand and a spinning seal would move it. */
+@keyframes pv-seal-set {
+  from { opacity: 0; transform: translateX(-8px) scale(.86); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The links keep a Haldi rule, but it is wiped in from the left rather than
+   switched on, and the word opens up very slightly under the cursor. */
+.pv-nav-right a {
+  position: relative;
+  white-space: nowrap;
+  transition: letter-spacing 180ms cubic-bezier(.2, .7, .3, 1), color 140ms linear;
+  /* A 12px line of type is a 16px tap target. The link box is grown to the
+     44px minimum instead, so the rule still sits directly under the word. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 14px 0 12px;
+  border-bottom: 0;
+}
+.pv-nav-right a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  height: 2px;
+  background: var(--haldi);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms cubic-bezier(.2, .7, .3, 1);
+}
+.pv-nav-right a:hover { letter-spacing: .1em; }
+.pv-nav-right a:hover::after, .pv-nav-right a:focus-visible::after { transform: scaleX(1); }
+.pv-nav-right a[aria-current='page']::after { transform: scaleX(1); background: var(--paper); }
+
+/* The chip breathes once on entry, so the eye is told which surface it is on. */
+.pv-play.is-enter .pv-nav-chip { animation: pv-chip-in 460ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes pv-chip-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The signed count is the one number on this page that only ever goes up.
+   When it does, it says so once. */
+.pv-nav-signed.is-bumped { animation: pv-signed-bump 620ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes pv-signed-bump {
+  0% { transform: scale(1); }
+  22% { transform: scale(1.22); color: var(--paper); }
+  100% { transform: scale(1); }
+}
+
+/* The sections cascade in behind the navbar, the run panel first. nth-child
+   rather than a --s custom property, so adding a section needs no markup
+   change. */
+.pv-play.is-enter > :nth-child(n + 2) {
+  animation: pv-sec-in 520ms cubic-bezier(.2, .7, .3, 1) both;
+}
+.pv-play.is-enter > :nth-child(2) { animation-delay: 200ms; }
+.pv-play.is-enter > :nth-child(3) { animation-delay: 280ms; }
+.pv-play.is-enter > :nth-child(4) { animation-delay: 340ms; }
+.pv-play.is-enter > :nth-child(5) { animation-delay: 400ms; }
+.pv-play.is-enter > :nth-child(6) { animation-delay: 460ms; }
+.pv-play.is-enter > :nth-child(7) { animation-delay: 520ms; }
+.pv-play.is-enter > :nth-child(8) { animation-delay: 580ms; }
+.pv-play.is-enter > :nth-child(n + 9) { animation-delay: 620ms; }
+@keyframes pv-sec-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The tabs arrive left to right, so the eye is walked across all six rather
+   than landing on whichever it likes. Armed on view entry only: a run repaints
+   this subtree three times, and re-animating under a viewer who is reading
+   looks like a glitch, not like motion. */
+.pv-play.is-enter .pv-tab {
+  animation: pv-tab-in 380ms cubic-bezier(.2, .7, .3, 1) both;
+  animation-delay: calc(var(--d) * 45ms + 220ms);
+}
+@keyframes pv-tab-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+/* The panel's contents settle in behind the strip that opened them. */
+.pv-play.is-enter .pv-runpanel {
+  animation: pv-runpanel-in 460ms cubic-bezier(.2, .7, .3, 1) 460ms both;
+}
+@keyframes pv-runpanel-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* A verdict that just arrived lands; one that is merely still on screen does
+   not. `is-fresh` is set only when the certificate hash changed. */
+.pv-verdict.is-fresh .pv-verdict-word { animation: pv-word-land 460ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes pv-word-land {
+  0% { opacity: 0; transform: translateY(10px) scale(.94); }
+  60% { opacity: 1; transform: translateY(0) scale(1.03); }
+  100% { transform: none; }
+}
+/* The rail is redrawn left to right, in the order the lattice joins. */
+.pv-verdict.is-fresh .pv-lattice > * {
+  animation: pv-lat-in 340ms cubic-bezier(.2, .7, .3, 1) both;
+}
+.pv-verdict.is-fresh .pv-lattice > :nth-child(1) { animation-delay: 120ms; }
+.pv-verdict.is-fresh .pv-lattice > :nth-child(2) { animation-delay: 200ms; }
+.pv-verdict.is-fresh .pv-lattice > :nth-child(3) { animation-delay: 280ms; }
+@keyframes pv-lat-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+/* The colour rule above a fresh verdict is uncovered left to right rather than
+   drawn, because the rule is a real border and the panel already owns it. A
+   canvas-coloured cover retracts off it; the block band is 8px, the other two
+   are 3px, so the cover is sized per decision or it would eat the fill. */
+.pv-verdict.is-fresh { position: relative; }
+.pv-verdict.is-fresh::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  height: 8px;
+  background: var(--canvas);
+  transform-origin: right;
+  animation: pv-band-uncover 560ms cubic-bezier(.2, .7, .3, 1) both;
+  pointer-events: none;
+}
+.pv-verdict--allow.is-fresh::after,
+.pv-verdict--escalate.is-fresh::after { top: -3px; height: 3px; }
+@keyframes pv-band-uncover {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Lists read better dealt than blinked. Each of these carries --i in the
+   markup; the delay is capped so a nine-row shelf does not take a second and a
+   half to finish arriving, and the cap keeps a long chain from crawling. */
+.pv-play.is-enter .pv-card,
+.pv-play.is-enter .pv-compare-cell,
+.pv-play.is-enter .pv-check,
+.pv-play.is-enter .pv-node {
+  animation: pv-row-in 360ms cubic-bezier(.2, .7, .3, 1) both;
+  animation-delay: calc(min(var(--i, 0), 9) * 30ms + 460ms);
+}
+@keyframes pv-row-in {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The poisoned row is the one thing on the shelf worth staring at. Its
+   Vermilion edge pulses twice on arrival and then stops. */
+.pv-play.is-enter .pv-card.is-poisoned {
+  animation: pv-row-in 360ms cubic-bezier(.2, .7, .3, 1) 640ms both,
+             pv-poison-flag 2s cubic-bezier(.2, .7, .3, 1) 1100ms both;
+}
+@keyframes pv-poison-flag {
+  0%, 100% { box-shadow: none; }
+  25%, 75% { box-shadow: 0 0 0 2px var(--vermilion); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-play.is-enter .pv-nav,
+  .pv-play.is-enter .pv-nav-right > *,
+  .pv-play.is-enter .pv-nav-left svg,
+  .pv-play.is-enter .pv-nav-chip,
+  .pv-play.is-enter > :nth-child(n + 2),
+  .pv-play.is-enter .pv-tab,
+  .pv-play.is-enter .pv-runpanel,
+  .pv-play.is-enter .pv-card,
+  .pv-play.is-enter .pv-card.is-poisoned,
+  .pv-play.is-enter .pv-compare-cell,
+  .pv-play.is-enter .pv-check,
+  .pv-play.is-enter .pv-node,
+  .pv-nav-signed.is-bumped,
+  .pv-verdict.is-fresh .pv-verdict-word,
+  .pv-verdict.is-fresh .pv-lattice > *,
+  .pv-verdict.is-fresh::after { animation: none; }
+  .pv-nav-right a, .pv-nav-right a::after { transition: none; }
+  .pv-nav-right a:hover { letter-spacing: .04em; }
+}
+
+/* Keyboard focus. An Ink ring everywhere, a Paper ring on the Ink-filled
+   controls where an Ink ring would be invisible. */
+.pv-play :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.pv-runcta:focus-visible,
+.pv-nav-right a:focus-visible { outline-color: var(--paper); outline-offset: 3px; }
+

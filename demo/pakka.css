@@ -54,6 +54,26 @@
 
 * { box-sizing: border-box; }
 
+/*
+ * Scrolling.
+ *
+ * `scroll-behavior` covers the jumps the page makes on its own: the anchor
+ * links in the argument, and the `scrollTo(0, 0)` on a view change. Those used
+ * to teleport, which is what made a switch between surfaces feel like a cut
+ * rather than a move. Wheel scrolling is not covered by this property and is
+ * damped in app.js instead.
+ *
+ * `scroll-padding-top` is the sticky navbar's height. Without it an anchored
+ * heading lands underneath the bar and reads as the wrong section.
+ */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--pk-navh, 59px) + 20px);
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
 body {
   margin: 0;
   background: var(--pk-bg);

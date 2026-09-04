@@ -679,7 +679,7 @@ createServer((req, res) => {
     return;
   }
 
-  if (path === '/pakka.css' || path === '/play.css') {
+  if (path === '/pakka.css' || path === '/play.css' || path === '/checkout.css') {
     res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
     res.end(readFileSync(join(here, path.slice(1)), 'utf8'));
     return;

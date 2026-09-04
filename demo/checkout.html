@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pakka — checkout</title>
+    <title>Pakka - checkout</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -35,7 +35,7 @@
       <h1 style="margin-top: var(--sp-4); font-size: clamp(30px, 4vw, 40px)">Pay for a gated cart</h1>
       <p class="lede" style="margin-block: var(--sp-4) var(--sp-10)">
         The gate ran <strong>before</strong> this order existed and its certificate was written to the
-        audit chain first. This page exists for the <strong>failure</strong> path — a declined or
+        audit chain first. This page exists for the <strong>failure</strong> path - a declined or
         timed-out payment must leave that trail intact and readable.
       </p>
 
@@ -64,8 +64,8 @@
         <div class="card-head"><span>Razorpay test cards</span></div>
         <div class="card-body">
           <ul class="cards">
-            <li><code>4111 1111 1111 1111</code> — succeeds</li>
-            <li><code>4100 2800 0009 0000</code> — fails with <code>payment_timed_out</code></li>
+            <li><code>4111 1111 1111 1111</code> - succeeds</li>
+            <li><code>4100 2800 0009 0000</code> - fails with <code>payment_timed_out</code></li>
           </ul>
           <p class="muted dim" style="margin-top: 0.9rem">
             Any future expiry, any CVV. Razorpay's published test numbers; no money can move.
@@ -75,7 +75,7 @@
 
       <p class="muted dim">
         Whatever the payment does, the certificate and the chain are already written and
-        independently verifiable — <code>/state</code> returns them as JSON. A failed payment
+        independently verifiable - <code>/state</code> returns them as JSON. A failed payment
         is not a failed audit.
       </p>
     </main>
@@ -84,7 +84,7 @@
       No Subresource Integrity hash here, deliberately. Razorpay ships
       checkout.js as a continuously-updated payment SDK and publishes no SRI
       digest for it; pinning one would break checkout on their next release.
-      It cannot reach the gate regardless — the decision, the certificate and
+      It cannot reach the gate regardless - the decision, the certificate and
       the audit record were all written server-side before this page was served.
     -->
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
@@ -123,7 +123,7 @@
         rzp.on('payment.failed', (e) => {
           const d = e.error || {};
           show('bad', [
-            'PAYMENT FAILED — handled, not swallowed',
+            'PAYMENT FAILED - handled, not swallowed',
             'code        : ' + (d.code || '(none)'),
             'reason      : ' + (d.reason || '(none)'),
             'step        : ' + (d.step || '(none)'),

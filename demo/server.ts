@@ -3,7 +3,7 @@
  *
  * Runs the gate on a cart, creates a TEST-mode order carrying the certificate
  * reference, and serves a checkout page bound to that order. The point of the
- * page is the failure path — a declined or timed-out payment must leave the
+ * page is the failure path - a declined or timed-out payment must leave the
  * certificate and the audit chain intact and readable.
  *
  *   npx tsx demo/server.ts      # then open http://localhost:5173
