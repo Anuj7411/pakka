@@ -616,3 +616,91 @@
 @media (prefers-reduced-motion: reduce) {
   .pv-tab, .pv-runbtn { transition: none; }
 }
+
+/* ── checkout, v2 ───────────────────────────────────────────────────────────
+ * The checkout rebuilt in the same design system as the playground, so the two
+ * read as one product. Objects keep their forms: the cart is a receipt, the
+ * order facts are a document, the outcome is a stamped colour band.
+ */
+.pv-co-hero { padding: 28px 32px; }
+.pv-co-h { margin: 0 0 8px; font: 600 clamp(30px, 3.4vw, 44px)/1.05 Archivo; letter-spacing: -.02em; }
+.pv-co-sub { margin: 0; font: 400 16px/1.55 Archivo; color: var(--muted); max-width: 640px; }
+
+/* the order facts, as a document under the receipt */
+.pv-co-facts { margin-top: 18px; border-top: 1px solid var(--rule-strong); }
+.pv-co-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule-18);
+}
+.pv-co-fact-k { font: 500 10px/1.4 'Martian Mono'; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.pv-co-fact-v { font: 400 12px/1.5 'Martian Mono'; text-align: right; overflow-wrap: anywhere; }
+.pv-co-note { margin: 16px 0 0; font: 400 11px/1.6 'Martian Mono'; color: var(--muted); max-width: 620px; }
+.pv-co-prose { margin: 16px 0 0; font: 400 14px/1.55 Archivo; max-width: 620px; }
+
+/* the empty state */
+.pv-co-empty {
+  border: 1px dashed var(--rule-strong);
+  padding: clamp(28px, 4vw, 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: flex-start;
+}
+.pv-co-empty svg { opacity: .5; }
+.pv-co-empty p { margin: 0; max-width: 560px; font: 400 16px/1.55 Archivo; color: var(--muted); }
+.pv-co-empty-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+
+/* buttons: the run-tab lift, as a real button */
+.pv-co-btn {
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--ink);
+  min-height: 46px;
+  padding: 0 22px;
+  font: 500 11px/1 'Martian Mono';
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: transform 140ms cubic-bezier(.2, .7, .3, 1), background 140ms linear, color 140ms linear, box-shadow 140ms linear, border-color 140ms linear;
+}
+.pv-co-btn:hover { border-color: var(--ink); transform: translateY(-3px); box-shadow: 0 3px 0 var(--rule); }
+.pv-co-btn:active { transform: translateY(0); box-shadow: none; }
+.pv-co-btn--solid { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.pv-co-btn--solid:hover { background: var(--haldi); color: var(--ink); box-shadow: 0 3px 0 var(--ink); }
+.pv-co-btn--onink { border-color: rgba(245, 242, 233, .4); color: var(--paper); }
+.pv-co-btn--onink:hover { background: var(--paper); color: var(--ink); box-shadow: none; }
+.pv-co-btn--pay { min-height: 48px; padding: 0 26px; }
+
+/* the UPI form */
+.pv-co-vpa-label { display: block; font: 500 10px/1.4 'Martian Mono'; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.pv-co-chips { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.pv-co-chip { border: 1px solid var(--rule-18); background: transparent; color: var(--muted); min-height: 36px; padding: 0 12px; font: 400 11px/1 'Martian Mono'; }
+.pv-co-chip:hover { border-color: var(--ink); color: var(--ink); }
+.pv-co-payrow { display: flex; align-items: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+.pv-co-paystatus { font: 400 12px/1.5 'Martian Mono'; color: var(--muted); }
+
+/* outcome bands - the same colour language as the verdict */
+.pv-co-band { padding: 28px 32px; }
+.pv-co-band--block { background: var(--ink); border-top: 8px solid var(--vermilion); color: var(--paper); }
+.pv-co-band--block .pv-co-band-ord { font: 500 11px/1 'Martian Mono'; letter-spacing: .1em; text-transform: uppercase; color: rgba(245, 242, 233, .6); margin-bottom: 12px; }
+.pv-co-band--block .pv-co-band-word { font: 600 clamp(30px, 3.2vw, 44px)/1 'Martian Mono'; color: var(--vermilion-on-ink); letter-spacing: -.02em; }
+.pv-co-band--block p { margin: 18px 0 0; font: 400 15px/1.6 'Martian Mono'; color: rgba(245, 242, 233, .78); max-width: 640px; }
+.pv-co-band--block code { color: var(--paper); }
+.pv-co-band--block .pv-co-btn--onink { margin-top: 20px; }
+
+.pv-co-band--fail { border-top: 3px solid var(--vermilion); padding-inline: 0; }
+.pv-co-band--fail .pv-co-band-word { font: 500 30px/1 'Martian Mono'; color: var(--vermilion); }
+.pv-co-band--ok { border-top: 3px solid var(--go); padding-inline: 0; }
+.pv-co-band--ok .pv-co-band-word { font: 500 30px/1 'Martian Mono'; color: var(--go); }
+.pv-co-band-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.pv-co-band-code { font: 400 13px/1 'Martian Mono'; color: var(--muted); }
+.pv-co-rows { border-top: 1px solid var(--rule-18); }
+
+@media (max-width: 640px) {
+  .pv-co-fact { flex-direction: column; gap: 2px; }
+  .pv-co-fact-v { text-align: left; }
+}

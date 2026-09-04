@@ -289,11 +289,32 @@ function viewFromPath(p) {
   return 'argument';
 }
 
+const REDUCED_MOTION = () =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Switch surfaces through the View Transitions API where the browser has it.
+ *
+ * document.startViewTransition captures the page, runs the DOM update, and
+ * crossfades old to new on the compositor; pakka.css gives that a short
+ * brand-eased slide. Everywhere else it is an ordinary synchronous swap. This is
+ * the 2026 native way to animate between routes - no library, no jank.
+ */
+function switchView(apply) {
+  if (typeof document.startViewTransition === 'function' && !REDUCED_MOTION()) {
+    document.startViewTransition(apply);
+  } else {
+    apply();
+  }
+}
+
 function go(view, push = true) {
-  state.view = view;
-  if (push && location.pathname !== PATHS[view]) history.pushState({ view }, '', PATHS[view]);
-  render();
-  window.scrollTo(0, 0);
+  switchView(() => {
+    state.view = view;
+    if (push && location.pathname !== PATHS[view]) history.pushState({ view }, '', PATHS[view]);
+    render();
+    window.scrollTo(0, 0);
+  });
   ensurePlayRun();
 }
 
@@ -308,8 +329,10 @@ function ensurePlayRun() {
 }
 
 window.addEventListener('popstate', () => {
-  state.view = viewFromPath(location.pathname);
-  render();
+  switchView(() => {
+    state.view = viewFromPath(location.pathname);
+    render();
+  });
   ensurePlayRun();
 });
 
@@ -666,151 +689,164 @@ function renderPlay() {
 }
 
 
-function renderCheckout() {
+function pvCoReceipt() {
   const r = state.run;
   const sc = state.meta;
+  const rz = sc && sc.razorpay;
+  if (!r) {
+    return `<div class="pv-panel">
+      <div class="pv-head" style="margin-bottom:16px"><span class="pv-ordinal">the certified cart</span></div>
+      <div class="pv-receipt-empty">No cart · run the gate in the playground first</div>
+    </div>`;
+  }
+  const facts = [
+    ['gate decision', r.decision],
+    ['cart hash', r.cartHashShort],
+    ['certificate', r.certShort],
+    ['reserve · OC-228', r.reserve ? r.reserve.amount : '-'],
+    ['reserve rationale', r.reserve ? r.reserve.rationale : '-'],
+    ['key mode', rz && rz.enabled ? rz.keyId + ' · guard refuses a live key' : 'rzp_test_ · not configured'],
+  ];
+  return `<div class="pv-panel">
+    <div class="pv-head" style="margin-bottom:16px"><span class="pv-ordinal">the certified cart</span><span class="pv-sub--mono" style="color:var(--muted)">what checkout binds to</span></div>
+    <div class="pv-receipt">
+      <div class="pv-receipt-head"><b>Cart</b><span>1 line · ${r.cart[0].qty} unit${r.cart[0].qty === 1 ? '' : 's'}</span></div>
+      ${r.cart.map((l) => `<div class="pv-receipt-line">
+        <div class="pv-receipt-line-name">${esc(l.name)}</div>
+        <div class="pv-receipt-line-meta"><span>${l.qty} × ${esc(l.unit)} · <span class="${l.mismatch ? 'pv-mismatch' : ''}">${esc(l.category)}</span></span><span>${esc(l.total)}</span></div>
+      </div>`).join('')}
+      <div class="pv-receipt-total"><b>Total</b><span>${esc(r.cartTotal)}</span></div>
+    </div>
+    <div class="pv-co-facts">
+      ${facts.map(([k, v]) => `<div class="pv-co-fact"><span class="pv-co-fact-k">${esc(k)}</span><span class="pv-co-fact-v">${esc(v)}</span></div>`).join('')}
+    </div>
+    <p class="pv-co-note">Reserve sizing follows NPCI OC-228, triangulated from three secondary sources; the primary circular returns HTTP 403 to automated fetching. If it differs, one file is wrong.</p>
+  </div>`;
+}
+
+function pvCoPayment() {
+  const r = state.run;
   const dec = r ? r.decision : null;
 
+  if (!dec) {
+    return `<div class="pv-panel pv-panel--last">
+      <div class="pv-head" style="margin-bottom:16px"><span class="pv-ordinal">the payment</span></div>
+      <div class="pv-co-empty">
+        ${SEAL_ASKING(52)}
+        <p>Checkout binds to a certificate, not to a cart. Run the gate once and this page carries the cart hash, the reserve, and the certificate it was signed into.</p>
+        <div class="pv-co-empty-btns">
+          <button class="pv-co-btn pv-co-btn--solid" data-act="go-poisoned">Run the injection</button>
+          <button class="pv-co-btn" data-act="go-play">Open the playground</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  if (dec === 'block') {
+    return `<div class="pv-panel pv-panel--last" style="padding:0;border-top:0;overflow:hidden">
+      <div class="pv-co-band pv-co-band--block">
+        <div class="pv-co-band-ord">the payment</div>
+        <div class="pv-co-band-word">order not created</div>
+        <p>The gate refused this cart before authorisation, so there is nothing to pay for. Nothing was sent to Razorpay: <code>createOrder</code> takes a certified decision and throws on a block, so this is enforced by the gate, not by this page.</p>
+        <button class="pv-co-btn pv-co-btn--onink" data-act="go-play">Back to the playground</button>
+      </div>
+    </div>`;
+  }
+
+  let inner = '';
+  const payable = state.pay !== 'failed' && state.pay !== 'captured';
+  if (payable) {
+    inner = `<div class="pv-co-pay">
+      <div class="pv-label pv-label--dim" style="margin-bottom:14px">Pay by UPI · Razorpay test mode</div>
+      <label class="pv-co-vpa-label" for="pk-vpa">VPA</label>
+      <input id="pk-vpa" class="pv-input" value="${esc(state.vpa)}" placeholder="name@bank" style="max-width:340px">
+      <div class="pv-co-chips">
+        <button class="pv-co-chip" data-act="vpa-success">success@razorpay</button>
+        <button class="pv-co-chip" data-act="vpa-failure">failure@razorpay</button>
+      </div>
+      <div class="pv-co-payrow">
+        <button class="pv-co-btn pv-co-btn--solid pv-co-btn--pay" data-act="pay">Pay ${esc(r.cartTotal)}</button>
+        <span class="pv-co-paystatus">${esc(PAY_STATUS[state.pay] ?? PAY_STATUS.idle)}</span>
+      </div>
+      <p class="pv-co-note">The signature on the callback is verified server-side and the payment is then re-fetched from Razorpay: this page reports that status, not Checkout's. In test mode a cancelled UPI payment resolves as a successful one, so cancellation can only be tested in live mode.</p>
+    </div>`;
+  }
+
+  if (state.pay === 'failed') {
+    const o = state.order, p = state.payment;
+    const rows = p
+      ? [
+          ['razorpay payment_id', p.payment.id + ' · fetched from Razorpay'],
+          ['status', p.payment.status],
+          ['code', p.payment.errorCode || '-'],
+          ['reason', p.payment.errorReason || '-'],
+          ['razorpay order_id', p.orderId],
+          ['cart hash re-check', o ? (o.recheck.ok ? 'match · ' + o.recheck.certificate : 'MISMATCH · ' + o.recheck.reason) : '-'],
+          ['gate certificate', r.certShort + ' · unaffected'],
+        ]
+      : [
+          ['code', state.failCode],
+          ['reason', state.orderError || '-'],
+          ['razorpay order_id', o ? o.order.id + ' · real, test mode' : 'no order created'],
+          ['gate certificate', r.certShort + ' · unaffected'],
+        ];
+    inner += `<div class="pv-co-band pv-co-band--fail">
+      <div class="pv-co-band-head"><span class="pv-co-band-word">payment failed</span><span class="pv-co-band-code">${esc(state.failCode)}</span></div>
+      <div class="pv-co-rows">${rows.map(([k, v]) => `<div class="pv-co-fact"><span class="pv-co-fact-k">${esc(k)}</span><span class="pv-co-fact-v">${esc(v)}</span></div>`).join('')}</div>
+      <p class="pv-co-prose">The certificate is unaffected. It records what was asked, what was in the cart, and what the gate decided: a failed payment changes none of those, and the conformance evidence survives for the dispute.</p>
+      <div class="pv-co-empty-btns">
+        <button class="pv-co-btn" data-act="retry">Try again</button>
+        <button class="pv-co-btn" data-act="pay-success">Pay with success@razorpay</button>
+      </div>
+    </div>`;
+  }
+
+  if (state.pay === 'captured') {
+    const o = state.order, p = state.payment;
+    const rows = [
+      ['razorpay payment_id', p.payment.id + ' · fetched from Razorpay'],
+      ['status', p.payment.status],
+      ['amount', p.payment.amount],
+      ['method', p.payment.method + (p.payment.vpa ? ' · ' + p.payment.vpa : '')],
+      ['signature', p.signatureVerified ? 'verified · HMAC-SHA256 over order_id|payment_id' : 'not present on this callback'],
+      ['razorpay order_id', p.orderId],
+      ['cart hash re-check', o.recheck.ok ? 'match' : 'MISMATCH · ' + o.recheck.reason],
+      ['re-check certificate', o.recheck.ok ? o.recheck.certificate + ' · signed and chained' : '-'],
+      ['gate certificate', r.certShort + ' · evidence.others[]'],
+    ];
+    inner += `<div class="pv-co-band pv-co-band--ok">
+      <div class="pv-co-band-head"><span class="pv-co-band-word">payment captured</span></div>
+      <div class="pv-co-rows">${rows.map(([k, v]) => `<div class="pv-co-fact"><span class="pv-co-fact-k">${esc(k)}</span><span class="pv-co-fact-v">${esc(v)}</span></div>`).join('')}</div>
+      <p class="pv-co-prose">The cart hash was re-derived at authorisation and matched the one inside the certificate. Had it moved between the gate and the order, this payment would have been refused.</p>
+    </div>`;
+  }
+
+  return `<div class="pv-panel pv-panel--last">
+    <div class="pv-head" style="margin-bottom:16px"><span class="pv-ordinal">the payment</span><span class="pv-sub--mono" style="color:var(--muted)">real order · settled server-side</span></div>
+    ${inner}
+  </div>`;
+}
+
+function renderCheckout() {
+  const r = state.run;
+  const dec = r ? r.decision : null;
   const headline = dec === 'block' ? 'There is nothing to pay for.' : dec ? 'Confirm and pay' : 'No cart yet';
   const sub =
     dec === 'block'
-      ? 'The gate refused this cart before authorisation. A blocked cart never reaches order creation, so no payment is attempted at all.'
+      ? 'A blocked cart never reaches order creation, so no payment is attempted at all.'
       : dec
         ? 'The cart passed the gate. The certificate is already signed and chained; the cart hash is re-derived here and checked against it before the order is created.'
-        : 'Run the gate in the playground first - checkout binds to a certificate, not to a cart.';
-
-  let body = '';
-
-  if (!dec) {
-    body =
-      `<div class="pk-nocart">
-        ${SEAL_ASKING(52)}
-        <p>Checkout binds to a certificate, not to a cart. Run the gate once and this page will carry the cart hash, the reserve, and the certificate it was signed into.</p>
-        <div class="pk-nocart-btns">
-          <button class="pk-btn pk-btn--solid pk-btn--md" data-act="go-poisoned">Run the poisoned catalogue</button>
-          <button class="pk-btn pk-btn--ghost pk-btn--md" data-act="go-play">Open the playground</button>
-        </div>
-      </div>`;
-  } else if (dec === 'block') {
-    body =
-      `<div class="pk-refused">
-        <div class="pk-label">Order not created</div>
-        <div class="pk-refused-word">block</div>
-        <p>The gate refused this cart before authorisation, so there is nothing to pay for. Nothing was sent to Razorpay - <code>createOrder</code> takes a certified decision and throws on a block, so this is enforced by the gate rather than by this page.</p>
-        <button class="pk-btn pk-btn--onink" data-act="go-play">Back to the playground</button>
-      </div>`;
-  } else {
-    const payable = state.pay !== 'failed' && state.pay !== 'captured';
-    if (payable) {
-      body =
-        `<div class="pk-paypanel">
-          <div class="pk-paypanel-top">
-            <div class="pk-label pk-label--dim" style="margin-bottom:14px">Pay by UPI</div>
-            <label class="pk-vpa-label" for="pk-vpa">VPA</label>
-            <input id="pk-vpa" class="pk-vpa" value="${esc(state.vpa)}" placeholder="name@bank">
-            <div class="pk-vpa-chips">
-              <button class="pk-btn pk-btn--chip" data-act="vpa-success">success@razorpay</button>
-              <button class="pk-btn pk-btn--chip" data-act="vpa-failure">failure@razorpay</button>
-            </div>
-          </div>
-          <div class="pk-paypanel-foot">
-            <button class="pk-btn pk-btn--pay" data-act="pay">Pay ${esc(r.cartTotal)}</button>
-            <span class="pk-paystatus">${esc(PAY_STATUS[state.pay] ?? PAY_STATUS.idle)}</span>
-          </div>
-        </div>
-        <div class="pk-testnote">Razorpay Checkout, test mode. The signature on the callback is verified server-side and the payment is then re-fetched from Razorpay - this page reports that status, not Checkout's. In test mode a <em>cancelled</em> UPI payment resolves as a successful one, so cancellation can only be tested in live mode. Printed here rather than left to look like a success we earned.</div>`;
-    }
-
-    if (state.pay === 'failed') {
-      const o = state.order;
-      const p = state.payment;
-      const rows = p
-        ? [
-            ['razorpay payment_id', p.payment.id + ' · fetched from Razorpay'],
-            ['status', p.payment.status],
-            ['code', p.payment.errorCode || '-'],
-            ['reason', p.payment.errorReason || '-'],
-            ['step', p.payment.errorStep || '-'],
-            ['description', p.payment.errorDescription || '-'],
-            ['razorpay order_id', p.orderId],
-            ['cart hash re-check', o ? (o.recheck.ok ? 'match · ' + o.recheck.certificate : 'MISMATCH · ' + o.recheck.reason) : '-'],
-            ['gate certificate', r.certShort + ' · unaffected'],
-          ]
-        : [
-            ['code', state.failCode],
-            ['reason', state.orderError || '-'],
-            ['razorpay order_id', o ? o.order.id + ' · real, test mode' : 'no order created'],
-            ['gate certificate', r.certShort + ' · unaffected'],
-          ];
-      body +=
-        `<div class="pk-payfail">
-          <div class="pk-payfail-head">
-            <span class="pk-payfail-word">payment failed</span>
-            <span class="pk-payfail-code">${esc(state.failCode)}</span>
-          </div>
-          <table class="pk-kv"><tbody>${kvRows(rows)}</tbody></table>
-          <p class="pk-payprose">The certificate is unaffected. It records what was asked, what was in the cart, and what the gate decided - a failed payment does not change any of those, and the conformance evidence survives for the dispute.</p>
-          <div class="pk-paybtns">
-            <button class="pk-btn pk-btn--sm" data-act="retry">Try the payment again</button>
-            <button class="pk-btn pk-btn--sm pk-btn--quiet" data-act="pay-success">Pay with success@razorpay</button>
-          </div>
-        </div>`;
-    }
-
-    if (state.pay === 'captured') {
-      const o = state.order;
-      const p = state.payment;
-      const rows = [
-        ['razorpay payment_id', p.payment.id + ' · fetched from Razorpay'],
-        ['status', p.payment.status],
-        ['amount', p.payment.amount],
-        ['method', p.payment.method + (p.payment.vpa ? ' · ' + p.payment.vpa : '')],
-        ['signature', p.signatureVerified
-          ? 'verified · HMAC-SHA256 over order_id|payment_id'
-          : 'not present on this callback'],
-        ['razorpay order_id', p.orderId],
-        ['cart hash re-check', o.recheck.ok ? 'match' : 'MISMATCH · ' + o.recheck.reason],
-        ['re-check certificate', o.recheck.ok ? o.recheck.certificate + ' · signed and chained' : '-'],
-        ['gate certificate', r.certShort + ' · evidence.others[]'],
-      ];
-      body +=
-        `<div class="pk-paycap">
-          <div class="pk-paycap-word">payment captured</div>
-          <table class="pk-kv"><tbody>${kvRows(rows)}</tbody></table>
-          <p class="pk-payprose">The cart hash was re-derived at authorisation and matched the one inside the certificate. Had it moved between the gate and the order, this payment would have been refused.</p>
-        </div>`;
-    }
-  }
-
-  const rz = sc && sc.razorpay;
-  const summaryRows = [
-    ['cart total', r ? r.cartTotal : '-'],
-    ['gate decision', dec || 'not run'],
-    ['cart hash', r ? r.cartHashShort : '-'],
-    ['certificate', r ? r.certShort : '-'],
-    ['reserve (OC-228)', r && r.reserve ? r.reserve.amount : '-'],
-    ['reserve rationale', r && r.reserve ? r.reserve.rationale : '-'],
-    ['key mode', rz && rz.enabled ? `${rz.keyId} · guard refuses a live key` : 'rzp_test_ · not configured'],
-  ];
-
+        : 'Run the gate in the playground first: checkout binds to a certificate, not to a cart.';
   $('#view-checkout').innerHTML =
-    `<div class="pk-checkout-grid">
-      <div>
-        <div class="pk-label pk-label--dim" style="margin-bottom:18px">Checkout · Razorpay test mode</div>
-        <h2 class="pk-checkout-h">${esc(headline)}</h2>
-        <p class="pk-checkout-sub">${esc(sub)}</p>
-        ${body}
+    `<div class="pv-play">
+      ${pvNavbar()}
+      <div class="pv-panel pv-co-hero">
+        <div class="pv-label pv-label--dim" style="margin-bottom:12px">Checkout · Razorpay test mode</div>
+        <h2 class="pv-co-h">${esc(headline)}</h2>
+        <p class="pv-co-sub">${esc(sub)}</p>
       </div>
-      <div class="pk-summary">
-        <div class="pk-summary-head"><div class="pk-label">Order summary</div></div>
-        <div class="pk-summary-lines">
-          ${r
-            ? r.cart.map((l) => `<div class="pk-summary-line"><span>${esc(l.name)} × ${esc(l.qty)}</span><span class="pk-num">${esc(l.total)}</span></div>`).join('')
-            : `<div class="pk-summary-nocart">No cart · run the gate first</div>`}
-        </div>
-        <table><tbody>${kvRows(summaryRows)}</tbody></table>
-        <div class="pk-summary-note">Reserve sizing follows NPCI OC-228 as triangulated from three secondary sources; the primary circular returns HTTP 403 to automated fetching. If it differs, one file is wrong.</div>
-      </div>
+      ${pvCoReceipt()}
+      ${pvCoPayment()}
     </div>`;
 }
 
@@ -821,10 +857,10 @@ function render() {
   $('#view-play').hidden = v !== 'play';
   $('#view-checkout').hidden = v !== 'checkout';
 
-  // The v2 playground carries its own Ink navbar, so the shared nav steps aside
-  // on that view and returns for the argument and checkout.
+  // The v2 playground and checkout carry their own Ink navbar, so the shared nav
+  // steps aside on those views and returns for the argument page.
   const sharedNav = $('.pk-nav');
-  if (sharedNav) sharedNav.hidden = v === 'play';
+  if (sharedNav) sharedNav.hidden = v === 'play' || v === 'checkout';
 
   document.querySelectorAll('[data-view]').forEach((b) => {
     if (b.dataset.view === v) b.setAttribute('aria-current', 'page');

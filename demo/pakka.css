@@ -1181,3 +1181,47 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
   .pk-verdict-top { flex-wrap: wrap; row-gap: 14px; }
   .pk-strip { width: 100%; }
 }
+
+/* ── motion layer, 2026 ─────────────────────────────────────────────────────
+ * Native scroll-driven animations and the View Transitions API - the current
+ * browser techniques, applied with the brand's restraint rather than as
+ * decoration. Both are compositor-run and degrade to nothing where unsupported,
+ * so content is never hidden behind them. Researched Sept 2026; sources noted in
+ * the commit. A stamp still does not ease: verdict states are exempt.
+ */
+
+/* Cross-surface transitions. app.js wraps each view switch in
+   document.startViewTransition(); the default `root` capture crossfades, and
+   this gives it a short brand-eased slide. The brand mark is tagged so it holds
+   its place across surfaces rather than dissolving. */
+::view-transition-old(root) { animation: pk-vt-out 220ms cubic-bezier(.2, .7, .3, 1) both; }
+::view-transition-new(root) { animation: pk-vt-in 300ms cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes pk-vt-out { to { opacity: 0; transform: translateY(-6px); } }
+@keyframes pk-vt-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* Section reveal is reveal-once, handled by the JS IntersectionObserver path -
+   a scroll-scrubbed native timeline was tried and rejected: it leaves a
+   fold-straddling section at partial opacity on load, which reads as broken.
+   A one-shot reveal that stays put is the right behaviour here.
+
+   The hero's lattice rows stagger in on load instead - a short, self-contained
+   entrance that plays once and needs no scroll. Figures never do this: the
+   page's claims include 0.0% and a figure that animates from nothing is a lie. */
+@media (prefers-reduced-motion: no-preference) {
+  .pk-lattice-row, .pk-lattice-formula {
+    animation: pk-stagger-in 520ms cubic-bezier(.2, .7, .3, 1) both;
+  }
+  .pk-lattice-row:nth-child(1) { animation-delay: 60ms; }
+  .pk-lattice-row:nth-child(2) { animation-delay: 130ms; }
+  .pk-lattice-row:nth-child(3) { animation-delay: 200ms; }
+  .pk-lattice-formula { animation-delay: 270ms; }
+  @keyframes pk-stagger-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation: none; }
+}
