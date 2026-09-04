@@ -1,8 +1,22 @@
 # Render blueprint. Connect the repo and Render reads this.
 #
 # Secrets are NOT in here — sync:false means Render prompts for each one and
-# stores it, so nothing sensitive is ever committed. RAZORPAY_KEY_ID must be a
-# rzp_test_ key; the client refuses anything else at construction.
+# stores it, so nothing sensitive is ever committed.
+#
+# What each one is for:
+#   CONFORMANCE_SIGNING_KEY  REQUIRED. base64 of a 32-byte Ed25519 seed. The
+#                            process refuses to start without it — signing a
+#                            certificate is the point. Generate a fresh one:
+#                            node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+#   RAZORPAY_KEY_ID          For the checkout surface. Must be an rzp_test_ key;
+#   RAZORPAY_KEY_SECRET      the guard refuses a live key at construction, so a
+#                            live key here fails the health check rather than
+#                            moving money. Omit both and the argument and
+#                            playground still work; only checkout is disabled.
+#
+# GEMINI_API_KEY is deliberately absent: the deployed console runs the semantic
+# judge as a captured stub on purpose (that is the demonstration — the gate
+# holds while the model is compromised), so the web service never calls Gemini.
 services:
   - type: web
     name: pakka
@@ -14,11 +28,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20
-      - key: GEMINI_API_KEY
+      - key: CONFORMANCE_SIGNING_KEY
         sync: false
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
-        sync: false
-      - key: CONFORMANCE_SIGNING_KEY
         sync: false
