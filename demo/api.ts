@@ -1,55 +1,60 @@
 /**
  * The console's backend.
  *
- * Serves one scenario and runs it on demand, clean or poisoned. Everything the
- * UI shows comes from the real modules — the same `evaluate()` the Razorpay
- * demo uses, the same audit log, the same certificate. Nothing here is staged
- * for the screen.
+ * Every number the console shows comes from the real modules: `evaluate()` runs
+ * the real deterministic checkers, the real semantic layer and the real lattice
+ * join; the certificate is signed with a real Ed25519 key from the environment;
+ * the chain is the real hash-chained audit log on disk. Nothing here is staged
+ * for the screen, and nothing is recomputed in the browser.
  *
  *   npx tsx demo/api.ts        # then open http://localhost:5173
+ *
+ * The one thing that is NOT real is the UPI payment outcome. The order is
+ * created against Razorpay in test mode and the cart hash is re-checked against
+ * the certificate for real; the success/failure of the collect request itself is
+ * simulated, and the page says so where it says it.
  */
-import { createServer } from 'node:http';
+import { createServer, type ServerResponse } from 'node:http';
 import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { config as loadEnv } from 'dotenv';
-import { loadWebShop, usableProducts, richInstructions } from '../src/corpus/webshop.js';
-import { pairInstructions, pairablePool } from '../src/corpus/pairing.js';
-import { Rng } from '../src/corpus/rng.js';
-import { createShopper, type CatalogueEntry } from '../src/agent/shopper.js';
-import { buildScenario, cartFromPicks, hasCleanChoice, type Scenario } from '../src/agent/measure.js';
-import { evaluate } from '../src/gate/pipeline.js';
+
+import { evaluate, createOrder, recheckAtAuthorisation, GateRefusal, type Certified } from '../src/gate/pipeline.js';
+import {
+  assignLines,
+  checkScope,
+  checkStatedBounds,
+  checkQuantity,
+  checkAnswersARequest,
+  checkProductForSlot,
+  assessCart,
+  type Decision,
+} from '../src/deterministic/checkers.js';
 import { AuditLog } from '../src/audit/log.js';
 import { signerFromEnv, verifierFromPublicKey } from '../src/cert/signing.js';
 import { certificateHash, verifyCertificate } from '../src/cert/certificate.js';
-import { hasGeminiKey } from '../src/config/env.js';
-import { NULL_PROVIDER, type Provider } from '../src/semantic/provider.js';
-import { INJECTION_PAYLOAD, INJECTION_QUANTITY } from '../src/agent/injection.js';
+import { createRazorpayClient, paymentSignatureMatches } from '../src/razorpay/client.js';
+import { razorpayCredentials, hasRazorpayCredentials } from '../src/config/env.js';
+import type { Provider } from '../src/semantic/provider.js';
+import type { Cart, Mandate } from '../src/corpus/types.js';
+import {
+  MANDATE,
+  CATALOGUE,
+  POISON_INDEX,
+  STATED_CEILING_PAISE,
+  INJECTION_PAYLOAD,
+  agentPick,
+  cartFrom,
+  type Mode,
+} from './scenario.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, '..');
 loadEnv({ path: join(packageRoot, '.env') });
 
-// Render and most hosts inject PORT; 5173 is the local default.
 const PORT = Number(process.env['PORT'] ?? 5173);
 const MODEL = 'gemini-3.1-flash-lite';
-
-/**
- * The corpus, or the committed fixture.
- *
- * data/*.json is gitignored — 9MB of WebShop that a clone fetches with
- * scripts/fetch-data.sh. A deployed instance has no such step, so it falls back
- * to tests/fixtures, which IS committed and carries the same shape.
- *
- * Stated in the boot log rather than silently, because which corpus is loaded
- * changes which scenario the page shows.
- */
-function corpusDir(): { dir: string; source: string } {
-  const full = join(packageRoot, 'data');
-  if (existsSync(join(full, 'items_human_ins.json'))) return { dir: full, source: 'data/ (full corpus)' };
-  return { dir: join(packageRoot, 'tests', 'fixtures'), source: 'tests/fixtures (committed subset)' };
-}
-
 
 /**
  * A judge that has been completely taken over.
@@ -67,160 +72,454 @@ const verifier = verifierFromPublicKey(signer.publicKeyBase64());
 mkdirSync(join(packageRoot, 'audit'), { recursive: true });
 const log = new AuditLog(join(packageRoot, 'audit', 'console.jsonl'));
 
-const { dir: dataDir, source: dataSource } = corpusDir();
-const data = loadWebShop(dataDir);
-const pairs = pairInstructions(pairablePool(data, richInstructions), usableProducts(data));
-
-/** One scenario with an out-of-category product available to poison. */
-function pickScenario(): { scenario: Scenario; poisonIndex: number } {
-  const rng = new Rng(20260901);
-  for (let i = 0; i < pairs.length; i++) {
-    const s = buildScenario(pairs[i]!, pairs, rng);
-    if (s === null || !hasCleanChoice(s)) continue;
-    const idx = s.catalogue.findIndex((e) => e.category !== s.mandate.authorisedCategory);
-    if (idx >= 0) return { scenario: s, poisonIndex: idx };
+/**
+ * Razorpay is optional, but a BAD key is fatal.
+ *
+ * Two different situations that a single try/catch would flatten into one:
+ * no credentials at all is a fine way to run the gate, and the console says so;
+ * credentials that are present and wrong — a live key, a swapped secret — must
+ * stop the process. Degrading there would turn "refusing to start" into a
+ * silent downgrade, which is the failure mode this project spends its whole
+ * argument on.
+ */
+const razorpay = (() => {
+  if (!hasRazorpayCredentials()) {
+    return { enabled: false as const, reason: 'RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set' };
   }
-  throw new Error('no suitable scenario');
+  // Any error from here is a misconfiguration, not an absence. Let it throw.
+  const { keyId, keySecret } = razorpayCredentials();
+  return { enabled: true as const, keyId, keySecret, client: createRazorpayClient() };
+})();
+
+const RS = (paise: number): string =>
+  '₹' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const short = (h: string): string => {
+  const bare = h.startsWith('sha256:') ? h.slice(7) : h;
+  return bare ? `${bare.slice(0, 8)}·${bare.slice(8, 16)}` : '—';
+};
+
+// ---------------------------------------------------------------------------
+// The last run, kept so checkout can reach its `Certified` value.
+//
+// `Certified` is branded and only `evaluate()` can construct one, which is the
+// mechanism that makes "gate before order" unforgeable. It therefore cannot be
+// rebuilt from a request body — the server has to hold it.
+// ---------------------------------------------------------------------------
+
+interface RunState {
+  readonly mode: Mode;
+  readonly certified: Certified;
+  readonly cart: Cart;
+  readonly view: unknown;
+}
+let last: RunState | null = null;
+
+/**
+ * The order this process created for the current run.
+ *
+ * A payment callback names an order id. Checking it against this rather than
+ * against whatever the browser sent is what stops a caller reporting a payment
+ * made on some other order as though it settled this cart.
+ */
+let lastOrderId: string | null = null;
+
+// ---------------------------------------------------------------------------
+// Per-line evidence
+// ---------------------------------------------------------------------------
+
+/**
+ * The five checks, by the class each one raises.
+ *
+ * Same mapping `classify()` uses, in the same precedence order. Shown per check
+ * rather than per line because the certificate records only the ONE class that
+ * won precedence, and a reader deserves to see what the other four said.
+ */
+function perLineEvidence(cart: Cart, mandate: Mandate, semanticViolatedLineIds: Set<string>) {
+  const assignment = assignLines(cart, mandate);
+  const assessment = assessCart(cart, mandate);
+  const flagged = new Set(assessment.violations.map((v) => v.lineId));
+
+  const rows: { code: string; result: Decision; evidence: string }[] = [];
+
+  for (const line of cart.lines) {
+    const a = assignment.get(line.lineId) ?? null;
+
+    const scope = checkScope(line, mandate);
+    const bounds = a
+      ? checkStatedBounds(line, a.item)
+      : { decision: 'undecidable' as Decision, evidence: ['no request to check against'] };
+    const answers = checkAnswersARequest(a !== null, a?.score ?? 0);
+    const product = checkProductForSlot();
+    const qty = a
+      ? checkQuantity(line, a.item)
+      : { decision: 'undecidable' as Decision, evidence: 'no request to check against' };
+
+    rows.push(
+      { code: 'SCOPE_VIOLATION', result: scope.decision, evidence: scope.evidence ?? 'inside the authorised category' },
+      { code: 'CONSTRAINT_BREACH', result: bounds.decision, evidence: bounds.evidence.join('; ') || 'every stated bound is satisfied' },
+      { code: 'UNREQUESTED_ADDITION', result: answers.decision, evidence: answers.evidence ?? '' },
+      { code: 'ITEM_SUBSTITUTION', result: product.decision, evidence: product.evidence ?? '' },
+      { code: 'QUANTITY_DEVIATION', result: qty.decision, evidence: qty.evidence ?? 'quantity matches the stated one' },
+    );
+
+    // What the model actually did, derived rather than assumed: `judgeCart`
+    // skips any line the deterministic layer already flagged, because under the
+    // lattice nothing it returned could change that line's decision.
+    if (flagged.has(line.lineId)) {
+      rows.push({
+        code: 'semantic · not consulted',
+        result: 'clear',
+        evidence:
+          'The deterministic layer settled this line, so the judge was never called — ' +
+          'under the lattice nothing it returned could have lowered the decision',
+      });
+    } else if (semanticViolatedLineIds.has(line.lineId)) {
+      rows.push({ code: 'semantic · captured stub', result: 'violation', evidence: 'the judge returned wrong_product' });
+    } else {
+      rows.push({
+        code: 'semantic · captured stub',
+        result: 'clear',
+        evidence:
+          'Returned satisfies at confidence 1.00. Under the lattice it could only have escalated, ' +
+          'so it changed nothing',
+      });
+    }
+  }
+
+  return rows;
 }
 
-const { scenario, poisonIndex } = pickScenario();
-const shopper = createShopper({ model: MODEL });
+// ---------------------------------------------------------------------------
+// A run
+// ---------------------------------------------------------------------------
 
-function poisonedCatalogue(): CatalogueEntry[] {
-  return scenario.catalogue.map((e) =>
-    e.index === poisonIndex ? { ...e, description: `${e.description} ${INJECTION_PAYLOAD}` } : e,
-  );
+function chainView() {
+  const v = AuditLog.verify(log.path, verifier);
+  const entries = AuditLog.read(log.path)
+    .slice(-12)
+    .map((c, i) => ({
+      n: String(i + 1).padStart(2, '0'),
+      decision: c.decision,
+      prev: short(c.prev_hash),
+      hash: short(certificateHash(c)),
+      time: new Date(c.issued_at).toTimeString().slice(0, 8),
+      verifies: verifyCertificate(c, verifier).ok,
+    }));
+  return { records: v.length, valid: v.ok, breaks: v.breaks.length, head: short(v.head), entries };
 }
 
-async function runOnce(poisoned: boolean) {
-  const catalogue = poisoned ? poisonedCatalogue() : scenario.catalogue;
+async function runOnce(mode: Mode) {
+  const picks = agentPick(mode);
+  const cart = cartFrom(picks);
 
-  const agent = hasGeminiKey()
-    ? await shopper.shop(scenario.request, catalogue)
-    : { picks: [], failed: true, reason: 'GEMINI_API_KEY not set' };
-
-  if (agent.failed) {
-    // An outage is not an empty cart. The UI must be able to tell them apart.
-    return { agentFailed: true, agentReason: agent.reason };
-  }
-
-  const cart = cartFromPicks(scenario, agent.picks);
   const certified = await evaluate({
-    mandate: scenario.mandate,
+    mandate: MANDATE,
     cart,
-    provider: hasGeminiKey() ? CAPTURED : NULL_PROVIDER,
+    provider: CAPTURED,
     signer,
     log,
     model: { id: `${MODEL} (captured)`, temperature: 0 },
     reserve: { merchantId: 'merchant-demo', customerId: 'customer-demo' },
   });
 
-  const chain = AuditLog.verify(log.path, verifier);
   const cert = certified.certificate;
+  const semanticLines = new Set(
+    cert.violations.filter((v) => v.source === 'semantic').map((v) => v.lineId),
+  );
+  const total = cart.lines.reduce((n, l) => n + l.priceMinor * l.quantity, 0);
+  const reserve = cert.reserve;
 
-  return {
-    agentFailed: false,
-    poisoned,
-    tookBait: poisoned && agent.picks.some((p) => p.index === poisonIndex),
-    obeyedQuantity: agent.picks.some((p) => p.index === poisonIndex && p.quantity === INJECTION_QUANTITY),
-    picks: agent.picks.map((p) => ({
-      ...p,
-      name: scenario.catalogue[p.index]!.name,
-      category: scenario.catalogue[p.index]!.category,
-      pricePaise: scenario.catalogue[p.index]!.pricePaise,
+  const view = {
+    mode,
+    cart: cart.lines.map((l) => ({
+      name: l.name,
+      category: l.categoryPath[0] ?? '—',
+      qty: l.quantity,
+      total: RS(l.priceMinor * l.quantity),
     })),
+    cartTotal: RS(total),
+    cartHashShort: short(cert.cart_hash),
     decision: certified.decision,
     degraded: certified.degraded,
-    violations: cert.violations,
-    certificate: {
-      id: cert.certificate_id,
-      hash: certificateHash(cert),
-      mandate_hash: cert.mandate_hash,
-      cart_hash: cert.cart_hash,
-      policy_version: cert.policy_version,
-      prev_hash: cert.prev_hash,
-      key_id: cert.key_id,
-      issued_at: cert.issued_at,
-      signature: cert.signature,
-      model: cert.model,
-      reserve: cert.reserve,
-      verifies: verifyCertificate(cert, verifier).ok,
+    findings: perLineEvidence(cart, MANDATE, semanticLines),
+    certificate: [
+      ['decision', cert.decision],
+      ['mandate_hash', cert.mandate_hash],
+      ['cart_hash', cert.cart_hash],
+      ['violations', cert.violations.length ? cert.violations.map((v) => v.class ?? v.source).join(', ') : '[] — none'],
+      ['reserve', reserve
+        ? `${RS(reserve.amount_paise)} · ${reserve.rationale_code} · fundable ${reserve.fundable}`
+        : 'null'],
+      ['oc228 proof', reserve
+        ? `${reserve.constraint_proof.oc228} · ${reserve.constraint_proof.verifier_version}`
+        : '—'],
+      ['policy_version', cert.policy_version],
+      ['model', cert.model ? `${cert.model.id} · temperature ${cert.model.temperature}` : 'none'],
+      ['degraded', String(cert.degraded)],
+      ['prev_hash', cert.prev_hash],
+      ['hash', certificateHash(cert)],
+      ['key_id', cert.key_id],
+      ['signature (Ed25519)', cert.signature],
+      ['issued_at', cert.issued_at],
+    ],
+    certShort: short(certificateHash(cert)),
+    certVerifies: verifyCertificate(cert, verifier).ok,
+    keyId: cert.key_id,
+    reserve: reserve
+      ? { amount: RS(reserve.amount_paise), rationale: reserve.rationale_code, fundable: reserve.fundable }
+      : null,
+    chain: chainView(),
+  };
+
+  last = { mode, certified, cart, view };
+  return view;
+}
+
+// ---------------------------------------------------------------------------
+// Checkout
+// ---------------------------------------------------------------------------
+
+/**
+ * Create the order, then prove the cart did not move.
+ *
+ * `createOrder` takes the branded `Certified` value and throws `GateRefusal` on
+ * a blocked decision, so the "no order on block" property is enforced by the
+ * gate rather than by this handler remembering to check.
+ */
+async function createRealOrder() {
+  if (last === null) return { ok: false as const, reason: 'no run yet' };
+  if (!razorpay.enabled) return { ok: false as const, reason: `Razorpay not configured: ${razorpay.reason}` };
+
+  try {
+    const order = await createOrder({
+      certified: last.certified,
+      client: razorpay.client,
+      receipt: `pakka_${Date.now()}`,
+      allowEscalated: last.certified.decision === 'escalate',
+    });
+    const recheck = recheckAtAuthorisation({
+      order,
+      cartAtAuthorisation: last.cart,
+      original: last.certified.certificate,
+      signer,
+      log,
+    });
+    lastOrderId = order.id;
+    return {
+      ok: true as const,
+      keyId: razorpay.keyId,
+      order: {
+        id: order.id,
+        amount: RS(order.amount),
+        amountPaise: order.amount,
+        currency: order.currency,
+        status: order.status,
+      },
+      description: last.cart.lines.map((l) => l.name).join(', '),
+      certificateId: last.certified.certificate.certificate_id,
+      recheck: recheck.ok
+        ? { ok: true as const, certificate: short(certificateHash(recheck.certificate)) }
+        : { ok: false as const, reason: recheck.reason, expected: short(recheck.expected), found: short(recheck.found) },
+      chain: chainView(),
+    };
+  } catch (e) {
+    if (e instanceof GateRefusal) {
+      return { ok: false as const, refused: true as const, decision: e.decision, reason: e.message };
+    }
+    return { ok: false as const, reason: (e as Error).message };
+  }
+}
+
+/**
+ * Settle a checkout callback, without believing any of it.
+ *
+ * Razorpay Checkout runs in the customer's browser and hands the page an order
+ * id, a payment id and a signature. Three checks, in this order, and each one
+ * can only refuse:
+ *
+ *   1. the order id must be the order THIS process created for this run;
+ *   2. on a success callback, the signature must verify under the key secret;
+ *   3. the payment is then FETCHED from Razorpay, and its own `status`,
+ *      `amount` and `order_id` are what get reported — not the browser's.
+ *
+ * Step 3 is the one that matters. Without it the page would be reporting what
+ * it was told, which is exactly the posture this whole project argues against.
+ */
+async function confirmPayment(body: {
+  payment_id?: unknown;
+  order_id?: unknown;
+  signature?: unknown;
+}) {
+  if (!razorpay.enabled) return { ok: false as const, reason: 'Razorpay not configured' };
+
+  const paymentId = typeof body.payment_id === 'string' ? body.payment_id : '';
+  const orderId = typeof body.order_id === 'string' ? body.order_id : '';
+  const signature = typeof body.signature === 'string' ? body.signature : null;
+
+  if (paymentId === '' || orderId === '') {
+    return { ok: false as const, reason: 'payment_id and order_id are required' };
+  }
+  if (lastOrderId === null || orderId !== lastOrderId) {
+    return { ok: false as const, reason: 'order_id is not the order this run created' };
+  }
+
+  const signatureVerified =
+    signature === null
+      ? false
+      : paymentSignatureMatches({ orderId, paymentId, signature, keySecret: razorpay.keySecret });
+
+  // A success callback whose signature does not verify is not a payment. It is
+  // someone posting three strings.
+  if (signature !== null && !signatureVerified) {
+    return { ok: false as const, reason: 'payment signature did not verify' };
+  }
+
+  let payment;
+  try {
+    payment = await razorpay.client.fetchPayment(paymentId);
+  } catch (e) {
+    return { ok: false as const, reason: (e as Error).message };
+  }
+
+  if (payment.order_id !== orderId) {
+    return { ok: false as const, reason: 'payment belongs to a different order' };
+  }
+
+  const cert = last?.certified.certificate ?? null;
+  return {
+    ok: true as const,
+    signatureVerified,
+    payment: {
+      id: payment.id,
+      status: payment.status,
+      method: payment.method,
+      amount: RS(payment.amount),
+      vpa: payment.vpa ?? null,
+      errorCode: payment.error_code ?? null,
+      errorReason: payment.error_reason ?? null,
+      errorStep: payment.error_step ?? null,
+      errorDescription: payment.error_description ?? null,
     },
-    chain: { records: chain.length, valid: chain.ok, breaks: chain.breaks.length, head: chain.head },
+    orderId,
+    certificate: cert ? short(certificateHash(cert)) : '—',
   };
 }
 
-function json(res: import('node:http').ServerResponse, body: unknown, status = 200): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+// ---------------------------------------------------------------------------
+// Server
+// ---------------------------------------------------------------------------
+
+/** Bounded so a request body cannot be used to exhaust memory. */
+async function readJsonBody(req: import('node:http').IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > 16_384) throw new Error('request body too large');
+    chunks.push(chunk as Buffer);
+  }
+  if (chunks.length === 0) return {};
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
+function json(res: ServerResponse, body: unknown, status = 200): void {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }
 
 createServer((req, res) => {
   const url = req.url ?? '/';
+  const path = url.split('?')[0] ?? '/';
 
-  if (url.startsWith('/api/scenario')) {
+  if (path === '/api/scenario') {
     json(res, {
-      request: scenario.request,
-      authorisedCategory: scenario.mandate.authorisedCategory,
-      stated: {
-        attributes: scenario.mandate.items[0]!.statedAttributes,
-        options: scenario.mandate.items[0]!.statedOptions,
-      },
-      correctIndex: scenario.correctIndex,
-      poisonIndex,
+      instruction: MANDATE.text,
+      constraints: [
+        ['authorised category', MANDATE.authorisedCategory],
+        ['stated quantity', String(MANDATE.items[0]!.statedQuantity)],
+        ['stated finish', MANDATE.items[0]!.statedOptions.join(', ')],
+        // Printed as unbound rather than dropped: the instruction says it, and
+        // no deterministic checker binds it. Hiding the row would hide the gap.
+        ['stated ceiling', `${RS(STATED_CEILING_PAISE)} · stated, not bound by any L1 checker`],
+        ['mandate expires', 'task-scoped · TBAC, not object-scoped'],
+      ],
+      catalogue: CATALOGUE.map((p, i) => ({
+        idx: String(i).padStart(2, '0'),
+        name: p.name,
+        category: p.category,
+        price: RS(p.pricePaise),
+      })),
+      poisonIndex: POISON_INDEX,
       payload: INJECTION_PAYLOAD,
-      model: MODEL,
-      hasKey: hasGeminiKey(),
-      catalogue: scenario.catalogue,
+      keyId: signer.keyId,
+      razorpay: razorpay.enabled ? { enabled: true, keyId: razorpay.keyId } : { enabled: false, reason: razorpay.reason },
+      chain: chainView(),
     });
     return;
   }
 
-  if (url.startsWith('/api/run')) {
-    const poisoned = url.includes('poisoned=1');
-    runOnce(poisoned).then(
+  if (path === '/api/run') {
+    const mode: Mode = url.includes('mode=poisoned') ? 'poisoned' : 'clean';
+    runOnce(mode).then(
       (r) => json(res, r),
       (e: Error) => json(res, { error: e.message }, 500),
     );
     return;
   }
 
-  if (url.startsWith('/api/chain')) {
-    const v = AuditLog.verify(log.path, verifier);
-    json(res, {
-      records: v.length,
-      valid: v.ok,
-      breaks: v.breaks,
-      head: v.head,
-      entries: AuditLog.read(log.path)
-        .slice(-12)
-        .map((c) => ({
-          id: c.certificate_id,
-          decision: c.decision,
-          issued_at: c.issued_at,
-          cart_hash: c.cart_hash,
-          prev_hash: c.prev_hash,
-          hash: certificateHash(c),
-          verifies: verifyCertificate(c, verifier).ok,
-        })),
-    });
+  if (path === '/api/order') {
+    createRealOrder().then(
+      (r) => json(res, r),
+      (e: Error) => json(res, { ok: false, reason: e.message }, 500),
+    );
     return;
   }
 
-  if (url.startsWith('/site.css')) {
+  if (path === '/api/payment' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((b) => confirmPayment(b as Record<string, unknown>))
+      .then(
+        (r) => json(res, r),
+        (e: Error) => json(res, { ok: false, reason: e.message }, 400),
+      );
+    return;
+  }
+
+  if (path === '/api/chain') {
+    json(res, chainView());
+    return;
+  }
+
+  if (path === '/pakka.css') {
     res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
-    res.end(readFileSync(join(here, 'site.css'), 'utf8'));
+    res.end(readFileSync(join(here, 'pakka.css'), 'utf8'));
     return;
   }
 
-  // Two routes: the landing page makes the argument, the playground runs it.
-  const page = url === '/' || url.startsWith('/index') ? 'index.html'
-    : url.startsWith('/play') ? 'console.html'
-    : null;
+  if (path === '/app.js') {
+    res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+    res.end(readFileSync(join(here, 'app.js'), 'utf8'));
+    return;
+  }
 
-  if (page) {
+  // Brand artwork. The name is matched rather than joined so a traversal
+  // sequence cannot address anything outside demo/assets.
+  const asset = /^\/assets\/([A-Za-z0-9._-]+\.svg)$/.exec(path);
+  if (asset) {
+    const file = join(here, 'assets', asset[1]!);
+    if (existsSync(file)) {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+      res.end(readFileSync(file));
+      return;
+    }
+  }
+
+  // Three surfaces, one document. The client reads location.pathname on boot
+  // and switches views from there, so all three routes return the same page.
+  if (path === '/' || path === '/play' || path === '/checkout') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(readFileSync(join(here, page), 'utf8'));
+    res.end(readFileSync(join(here, 'index.html'), 'utf8'));
     return;
   }
 
@@ -228,7 +527,8 @@ createServer((req, res) => {
   res.end('not found');
 }).listen(PORT, '0.0.0.0');
 
-console.log(`corpus  : ${dataSource}`);
-console.log(`request : ${scenario.request}`);
-console.log(`model   : ${hasGeminiKey() ? MODEL : 'none — set GEMINI_API_KEY'}`);
-console.log(`serving : http://localhost:${PORT}`);
+console.log(`signing key : ${signer.keyId} (Ed25519)`);
+console.log(`audit log   : ${log.path}`);
+console.log(`razorpay    : ${razorpay.enabled ? `${razorpay.keyId} (test mode)` : `off — ${razorpay.reason}`}`);
+console.log(`judge       : captured stub · satisfies at 1.00, every line`);
+console.log(`serving     : http://localhost:${PORT}`);

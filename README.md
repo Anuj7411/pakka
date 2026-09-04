@@ -80,7 +80,7 @@ model.
 ## Other entry points
 
 ```bash
-npm run check              # typecheck + 538 tests + the OC-228 safety gate
+npm run check              # typecheck + 556 tests + the OC-228 safety gate
 npm run eval               # deterministic results on the full corpus
 npm run oc228              # the reserve constraint proof
 npx tsx scripts/demo-order.ts    # real Razorpay test-mode order, end to end
@@ -141,7 +141,7 @@ Written down because a gate you cannot argue with is a gate nobody should trust.
 
 ## Testing
 
-538 tests · 98.8% statement coverage · mutation tested.
+556 tests at HEAD · 538 in the run that produced 98.8% statement coverage · mutation tested.
 
 Mutation testing is used as a *finding* tool, not a badge. It has so far caught:
 a compound-suffix rule that survived being deleted, an inverted public-key
