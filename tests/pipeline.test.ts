@@ -23,7 +23,7 @@ import { generateSigner, verifierFromPublicKey } from '../src/cert/signing.js';
 import { certificateHash, POLICY_VERSION, verifyCertificate } from '../src/cert/certificate.js';
 import { SIZER_POLICY_VERSION } from '../src/sizer/reserve.js';
 import { OC228_VERIFIER_VERSION } from '../src/verifier/oc228.js';
-import { assertNotesFit, RazorpayError, type Order, type RazorpayClient, type CreateOrderInput } from '../src/razorpay/client.js';
+import { assertNotesFit, RazorpayError, type Order, type Payment, type RazorpayClient, type CreateOrderInput } from '../src/razorpay/client.js';
 import type { Provider } from '../src/semantic/provider.js';
 import type { Cart, CartLine, Mandate, MandateItem } from '../src/corpus/types.js';
 
@@ -95,6 +95,10 @@ function fakeClient(): RazorpayClient & { created: CreateOrderInput[] } {
       };
     },
     fetchOrder: async (): Promise<Order> => {
+      throw new Error('not used');
+    },
+    fetchPayment: async (): Promise<Payment> => {
+      // The pipeline never settles a payment; it stops at order creation.
       throw new Error('not used');
     },
   };

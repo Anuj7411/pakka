@@ -13,6 +13,7 @@
  *  - Retry a non-idempotent create. A retried order creation is a duplicate
  *    order, which is worse than a failed one.
  */
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { razorpayCredentials } from '../config/env.js';
 
 const API_BASE = 'https://api.razorpay.com/v1';
@@ -63,9 +64,65 @@ export interface Order {
   readonly created_at: number;
 }
 
+/**
+ * A payment, as Razorpay reports it.
+ *
+ * Fetched rather than believed. Checkout hands the browser a payment id and a
+ * signature; what that payment actually DID is a question only Razorpay can
+ * answer, and asking is the difference between "the page said captured" and
+ * "the payment is captured".
+ */
+export interface Payment {
+  readonly id: string;
+  readonly status: string;
+  readonly method: string;
+  readonly amount: number;
+  readonly currency: string;
+  readonly order_id: string | null;
+  readonly vpa?: string;
+  readonly error_code?: string | null;
+  readonly error_description?: string | null;
+  readonly error_reason?: string | null;
+  readonly error_step?: string | null;
+  readonly error_source?: string | null;
+}
+
 export interface RazorpayClient {
   createOrder(input: CreateOrderInput): Promise<Order>;
   fetchOrder(orderId: string): Promise<Order>;
+  fetchPayment(paymentId: string): Promise<Payment>;
+}
+
+/**
+ * Did this checkout callback really come from Razorpay?
+ *
+ * Razorpay Checkout runs in the customer's browser and hands the page three
+ * strings. Anyone can post three strings. The signature is
+ * `HMAC-SHA256(order_id + "|" + payment_id)` under the key secret, so only a
+ * party holding the secret can produce one — which is us and Razorpay, and not
+ * whoever has devtools open.
+ *
+ * A gate that verifies a cart against an instruction and then takes the
+ * browser's word for whether it was paid would have moved the trust boundary
+ * one step to the right and called it done.
+ *
+ * Compared with `timingSafeEqual` over the two strings' bytes. The length check
+ * first is not a shortcut past it: `timingSafeEqual` throws on unequal lengths,
+ * and a thrown comparison is a comparison that did not happen.
+ */
+export function paymentSignatureMatches(args: {
+  readonly orderId: string;
+  readonly paymentId: string;
+  readonly signature: string;
+  readonly keySecret: string;
+}): boolean {
+  const expected = createHmac('sha256', args.keySecret)
+    .update(`${args.orderId}|${args.paymentId}`)
+    .digest('hex');
+  if (typeof args.signature !== 'string' || args.signature.length !== expected.length) {
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(args.signature, 'utf8'));
 }
 
 /**
@@ -205,6 +262,10 @@ export function createRazorpayClient(opts: ClientOptions = {}): RazorpayClient {
       // Path-injected ids are encoded: an order id is caller-supplied and we do
       // not want it steering the request to another endpoint.
       return (await call(`/orders/${encodeURIComponent(orderId)}`)) as Order;
+    },
+
+    async fetchPayment(paymentId: string): Promise<Payment> {
+      return (await call(`/payments/${encodeURIComponent(paymentId)}`)) as Payment;
     },
   };
 }
