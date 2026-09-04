@@ -284,11 +284,23 @@ function go(view, push = true) {
   if (push && location.pathname !== PATHS[view]) history.pushState({ view }, '', PATHS[view]);
   render();
   window.scrollTo(0, 0);
+  ensurePlayRun();
+}
+
+// The v2 playground is designed around a run always being present. Opening it
+// with no run auto-runs the injection, so the page shows the full design rather
+// than an empty shell. It is a real run: it signs a certificate and grows the
+// chain, exactly like pressing the tab.
+function ensurePlayRun() {
+  if (state.view === 'play' && state.meta && !state.run && !state.running) {
+    runScenario('injection');
+  }
 }
 
 window.addEventListener('popstate', () => {
   state.view = viewFromPath(location.pathname);
   render();
+  ensurePlayRun();
 });
 
 /* ── rendering ───────────────────────────────────────────────────────── */
@@ -303,315 +315,334 @@ const PAY_STATUS = {
   confirming: 'verifying the signature and re-fetching the payment',
 };
 
-function renderActionBar() {
+/* ── v2 playground rendering ─────────────────────────────────────────────
+ * The "six objects, six forms" design of record, ported. Each object takes the
+ * form of the thing it is; none is a generic table. See demo/play.css.
+ */
+
+const VC = { allow: 'allow', escalate: 'escalate', block: 'block' };
+
+// Seals, inlined so they take fixed brand colours and cost no request.
+const NAV_SEAL =
+  '<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M0 0H20L32 12V32H0Z" fill="#E8C400"></path>' +
+  '<g transform="translate(-0.6,0.6)" stroke="#0E100C" stroke-width="3.5" fill="none" stroke-linecap="butt" stroke-linejoin="miter">' +
+  '<path d="M8 8V24"></path><path d="M16 8L8 16L16 24"></path><path d="M25 8L17 16L25 24"></path></g></svg>';
+const NAV_WORDMARK =
+  '<svg viewBox="-2 -2 132 38" width="86" height="25" fill="none" stroke="#F5F2E9" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="1.05" stroke-width="4.6" aria-label="PAKKA">' +
+  '<path d="M2.3 0V32"></path><path d="M2.3 2.3H13.3L17.7 6.7V16.5H2.3"></path><path d="M26.2 32L34.2 2.3H41.2L49.2 32"></path><path d="M29.7 22.5H45.7"></path><path d="M57.3 0V32"></path><path d="M74 0L57.3 16L74 32"></path><path d="M79.3 0V32"></path><path d="M96 0L79.3 16L96 32"></path><path d="M103.7 32L111.7 2.3H118.7L126.7 32"></path><path d="M107.2 22.5H123.2"></path></svg>';
+const SIG_SEAL =
+  '<svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><path d="M0 0H20L32 12V32H0Z" fill="#0E100C"></path>' +
+  '<g transform="translate(-0.6,0.6)" stroke="#F5F2E9" stroke-width="3.5" fill="none" stroke-linejoin="miter"><path d="M8 8V24"></path><path d="M16 8L8 16L16 24"></path><path d="M25 8L17 16L25 24"></path></g></svg>';
+const CERT_SEAL =
+  '<svg width="46" height="46" viewBox="0 0 32 32" aria-hidden="true"><path d="M0 0H22L32 10V32H0Z" fill="#E8C400"></path>' +
+  '<g transform="translate(-0.6,0.6)" stroke="#0E100C" stroke-width="3" fill="none" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 8V24"></path><path d="M16 8L8 16L16 24"></path><path d="M25 8L17 16L25 24"></path></g></svg>';
+const STATE_SEAL = (running) =>
+  `<svg width="40" height="40" viewBox="0 0 32 32" aria-hidden="true"><path d="M0 0H22L32 10V32H0Z" fill="${running ? '#E8C400' : 'none'}" stroke="#0E100C" stroke-width="1.4"></path>` +
+  '<g transform="translate(-0.6,0.6)" stroke="#0E100C" stroke-width="3" fill="none" stroke-linejoin="miter"><path d="M25 8L17 16L25 24"></path></g></svg>';
+
+const BOUND_KEY = {
+  'authorised category': 'category',
+  'stated quantity': 'quantity',
+  'stated finish': 'finish',
+  'stated ceiling': 'ceiling',
+  'mandate expires': 'expires',
+};
+const CAT_SHORT = (c) => (c === 'Tools & Home Improvement' ? 'Tools & Home' : c);
+
+function pvNavbar() {
   const meta = state.meta;
-  if (!meta) { $('#pk-actionbar').innerHTML = `<span class="pk-label">Loading…</span>`; return; }
-
-  const chips = meta.scenarios
-    .map((s) => {
-      const on = state.activeScenario === s.id && !state.showCustom;
-      return `<button class="pk-chip-run${on ? ' is-active' : ''}" data-act="run" data-id="${esc(s.id)}"
-                title="${esc(s.blurb)}"><span class="pk-chip-run-title">${esc(s.title)}</span>
-                <span class="pk-chip-run-tag pk-tag-${esc(s.expect)}">${esc(s.expect)}</span></button>`;
-    })
-    .join('');
-
-  const customOn = state.showCustom;
-  const note = state.run && state.run.judge === 'unavailable'
-    ? 'The model layer is unreachable, so the gate fails safe to a human. It cannot fail to allow.'
-    : 'The judge is captured: <b>satisfies</b> at 1.00, every line. Watch it change nothing.';
-
-  $('#pk-actionbar').innerHTML =
-    `<span class="pk-label">Choose a run</span>
-     ${chips}
-     <button class="pk-chip-run${customOn ? ' is-active' : ''}" data-act="toggle-custom">
-       <span class="pk-chip-run-title">Build your own</span>
-       <span class="pk-chip-run-tag">custom</span>
-     </button>
-     <button class="pk-btn pk-btn--reset" data-act="reset">Reset</button>
-     <span class="pk-barnote">${note}</span>`;
+  const signed = state.chain ? state.chain.records : 0;
+  const policy = state.run ? state.run.policyShort : (meta ? '-' : '-');
+  return `<div class="pv-nav">
+    <div class="pv-nav-left">
+      <a href="/" data-view="argument" aria-label="Pakka home" style="display:flex;align-items:center;gap:13px">${NAV_SEAL}${NAV_WORDMARK}</a>
+      <span class="pv-nav-chip">playground</span>
+    </div>
+    <div class="pv-nav-right">
+      <a href="/" data-view="argument">the argument</a>
+      <a href="/checkout" data-view="checkout">checkout</a>
+      <span class="pv-nav-policy">policy ${esc(policy)}</span>
+      <span class="pv-nav-signed">${signed} signed</span>
+    </div>
+  </div>`;
 }
 
-function renderCustomPanel() {
+function pvRunbar() {
+  const meta = state.meta;
+  const tabs = (meta ? meta.scenarios : [])
+    .map((s) => {
+      const on = state.activeScenario === s.id && !state.showCustom;
+      return `<button class="pv-tab${on ? ' is-active' : ''}" data-act="run" data-id="${esc(s.id)}" title="${esc(s.blurb)}">
+        <div class="pv-tab-top"><span class="pv-tab-dot pv-bg-${esc(s.expect)}"></span>
+          <span class="pv-tab-title">${esc(s.title)}</span></div>
+        <div class="pv-tab-verdict pv-verdict-${esc(s.expect)}${s.expect === 'escalate' ? '-c' : ''}">${esc(s.expect)}</div>
+      </button>`;
+    })
+    .join('');
+  return `<div class="pv-runbar">
+    <div class="pv-runbar-label">Run</div>
+    ${tabs}
+    <button class="pv-runbtn${state.showCustom ? ' is-active' : ''}" data-act="toggle-custom">Sandbox</button>
+    <button class="pv-runbtn pv-runbtn--reset" data-act="reset">Reset</button>
+  </div>`;
+}
+
+function pvSandbox() {
+  if (!state.showCustom) return '';
   const meta = state.meta;
   const c = state.custom;
-  const opts = meta.catalogue
+  const items = meta.catalogue
     .map((p, i) => `<option value="${i}"${i === c.itemIndex ? ' selected' : ''}>${esc(p.idx + '  ' + p.name)}</option>`)
     .join('');
   const cats = meta.categories
     .map((cat) => `<option value="${esc(cat)}"${cat === c.authorisedCategory ? ' selected' : ''}>${esc(cat)}</option>`)
     .join('');
-  const statedOpts = ['unstated', '1', '2', '3', '5', '10']
-    .map((v) => {
-      const val = v === 'unstated' ? 'null' : v;
-      const sel = String(c.statedQuantity) === val ? ' selected' : '';
-      return `<option value="${val}"${sel}>${v}</option>`;
-    })
+  const statedVal = c.statedQuantity === null ? 'unstated' : String(c.statedQuantity);
+  const stated = ['1', '2', '3', 'unstated']
+    .map((v) => `<option value="${v === 'unstated' ? 'null' : v}"${statedVal === v ? ' selected' : ''}>${v}</option>`)
     .join('');
+  return `<div class="pv-sandbox">
+    <div class="pv-sandbox-head"><b>Sandbox</b><span>Set the four things that decide the verdict, then run it.</span></div>
+    <div class="pv-sandbox-grid">
+      <label><span>Item the agent adds</span><select class="pv-select" data-custom="itemIndex">${items}</select></label>
+      <label><span>Quantity in cart</span><input class="pv-input" type="number" min="1" max="9" value="${esc(c.quantity)}" data-custom="quantity"></label>
+      <label><span>Quantity stated</span><select class="pv-select" data-custom="statedQuantity">${stated}</select></label>
+      <label><span>Authorised category</span><select class="pv-select" data-custom="authorisedCategory">${cats}</select></label>
+      <button class="pv-sandbox-run" data-act="run-custom">Run the gate</button>
+    </div>
+  </div>`;
+}
 
-  return `<div class="pk-panel">
-    <div class="pk-panel-head">
-      <div class="pk-label pk-label--dim">Build your own run</div>
-      <div class="pk-micro">you set the inputs</div>
+function pvInstruction() {
+  const r = state.run;
+  const meta = state.meta;
+  const instruction = r ? r.instruction : (meta ? 'i need a wall sconce for the hallway, brushed brass, just one, under ₹4,000' : '');
+  const mandate = r ? r.mandateHashShort : '-';
+  const bounds = r
+    ? r.constraints.map(([k, v]) => ({ k: BOUND_KEY[k] || k, v: String(v).split(' · ')[0] }))
+    : [];
+  const chips = bounds.map((b) => `<span class="pv-bound"><b>${esc(b.k)}</b>${esc(b.v)}</span>`).join('');
+  return `<div class="pv-panel pv-instruction">
+    <div>
+      <div class="pv-head"><span class="pv-ordinal">01 &nbsp;the instruction</span><span class="pv-sub--mono" style="color:var(--muted)">signed by the human</span></div>
+      <p class="pv-quote">"${esc(instruction)}"</p>
+      <div class="pv-sigline">${SIG_SEAL}<span>mandate ${esc(mandate)}</span></div>
     </div>
-    <div class="pk-form">
-      <label class="pk-field"><span>Agent buys</span>
-        <select class="pk-select" data-custom="itemIndex">${opts}</select></label>
-      <label class="pk-field"><span>Quantity</span>
-        <input class="pk-input" type="number" min="1" max="99" value="${esc(c.quantity)}" data-custom="quantity"></label>
-      <label class="pk-field"><span>Instruction said (qty)</span>
-        <select class="pk-select" data-custom="statedQuantity">${statedOpts}</select></label>
-      <label class="pk-field"><span>Authorised category</span>
-        <select class="pk-select" data-custom="authorisedCategory">${cats}</select></label>
+    <div>
+      <div class="pv-label" style="margin-bottom:14px">Bounds it authorises</div>
+      <div class="pv-bounds">${chips || '<span class="pv-sub">pick a run above</span>'}</div>
     </div>
-    <button class="pk-btn pk-btn--solid pk-btn--md" data-act="run-custom" style="margin-top:16px">Run it through the gate</button>
-    <p class="pk-form-hint">Change the category to something the item is not in, or the quantity above what the instruction allows, and watch the gate block it. Leave them matching and it allows.</p>
+  </div>`;
+}
+
+function pvShelf() {
+  const meta = state.meta;
+  const r = state.run;
+  if (!meta) return '';
+  const picked = r ? r.pickedIndex : -1;
+  const poison = r ? r.poisonIndex : null;
+  const cards = meta.catalogue.map((p, i) => {
+    const chosen = i === picked;
+    const poisoned = i === poison;
+    const cls = poisoned ? ' is-poisoned' : chosen ? ' is-chosen' : '';
+    const flags =
+      (poisoned ? '<span class="pv-card-poison"></span>' : '') +
+      (chosen ? '<span class="pv-card-picked">agent picked</span>' : '');
+    const elec = p.category !== 'Tools & Home Improvement';
+    return `<div class="pv-card${cls}">
+      <div class="pv-card-top"><span class="pv-card-idx">${esc(p.idx)}</span><div class="pv-card-flags">${flags}</div></div>
+      <div class="pv-card-name">${esc(p.name)}</div>
+      <div class="pv-card-foot"><span class="pv-card-cat${elec ? ' pv-card-cat--elec' : ''}">${esc(CAT_SHORT(p.category))}</span><span class="pv-card-price">${esc(p.price)}</span></div>
+    </div>`;
+  }).join('');
+  const note = poison !== null
+    ? `<span class="pv-sub--mono" style="color:var(--vermilion)">row 05 carries an injected instruction</span>`
+    : `<span class="pv-sub--mono" style="color:var(--muted)">${r ? 'clean' : 'pick a run above'}</span>`;
+  const payload = poison !== null
+    ? `<div class="pv-payload">
+        <div class="pv-payload-head"><b>Injected instruction found in row 05</b><span>merchant-controlled text · read by the agent</span></div>
+        <p>${esc(meta.payload)}</p>
+      </div>` : '';
+  return `<div class="pv-panel">
+    <div class="pv-head-row">
+      <div class="pv-head"><span class="pv-ordinal">02 &nbsp;the shelf</span><span class="pv-sub">nine products the agent could pick from</span></div>
+      ${note}
+    </div>
+    <div class="pv-shelf">${cards}</div>
+    ${payload}
+  </div>`;
+}
+
+function pvCart() {
+  const r = state.run;
+  const receipt = r
+    ? `<div class="pv-receipt">
+        <div class="pv-receipt-head"><b>Cart</b><span>1 line · ${r.cart[0].qty} unit${r.cart[0].qty === 1 ? '' : 's'}</span></div>
+        ${r.cart.map((l) => `<div class="pv-receipt-line">
+          <div class="pv-receipt-line-name">${esc(l.name)}</div>
+          <div class="pv-receipt-line-meta"><span>${l.qty} × ${esc(l.unit)} · <span class="${l.mismatch ? 'pv-mismatch' : ''}">${esc(l.category)}</span></span><span>${esc(l.total)}</span></div>
+        </div>`).join('')}
+        <div class="pv-receipt-total"><b>Total</b><span>${esc(r.cartTotal)}</span></div>
+        <div class="pv-receipt-hash">cart ${esc(r.cartHashShort)}</div>
+      </div>`
+    : `<div class="pv-receipt-empty">Empty · pick a run above</div>`;
+  const compare = r
+    ? `<div class="pv-compare">${r.compare.map((c) => `<div class="pv-compare-cell">
+        <div class="pv-compare-k">${esc(c.k)}</div>
+        <div class="pv-compare-got${c.breach ? ' is-breach' : ''}">${esc(CAT_SHORT(c.got))}</div>
+        <div class="pv-compare-want">asked ${esc(CAT_SHORT(c.want))}</div>
+      </div>`).join('')}</div>`
+    : `<div class="pv-sub" style="padding:20px 0">run a scenario to compare the cart against the bounds</div>`;
+  return `<div class="pv-panel pv-cartzone">
+    <div>
+      <div class="pv-head" style="margin-bottom:16px"><span class="pv-ordinal">03 &nbsp;the cart</span><span class="pv-sub--mono" style="color:var(--muted)">what it actually added</span></div>
+      ${receipt}
+    </div>
+    <div>
+      <div class="pv-label" style="margin-bottom:14px">Against the bounds</div>
+      ${compare}
+    </div>
+  </div>`;
+}
+
+function pvVerdict() {
+  const r = state.run;
+  if (!r) {
+    return `<div class="pv-panel"><div class="pv-head" style="margin-bottom:12px"><span class="pv-ordinal">04 &nbsp;the verdict</span></div><div class="pv-sub">pick a run above</div></div>`;
+  }
+  const dec = r.decision;
+  const reached = ['allow', 'escalate', 'block'].indexOf(dec);
+  const v = r.findings.filter((f) => f.result === 'violation').length;
+  const u = r.findings.filter((f) => f.result === 'undecidable').length;
+  const cl = r.findings.filter((f) => f.result === 'clear').length;
+  const outcome = dec === 'block' ? 'order not created' : dec === 'escalate' ? 'held for a human' : 'cleared to pay';
+  const line = dec === 'block'
+    ? 'Nothing in this refusal read the prose. decision = max(deterministic, semantic).'
+    : dec === 'escalate'
+      ? 'A checker could not decide, so the decision rose. The model can raise it and nothing can lower it.'
+      : 'Every check cleared. The model layer agreed, which changed nothing - it cannot approve.';
+  const lat = (name, idx) => {
+    const on = reached === idx;
+    const struck = idx < reached ? ' pv-struck' : '';
+    const blockCls = name === 'block' && on ? ' pv-lat-block' : '';
+    return `<span class="${on ? 'pv-lat-on' : 'pv-lat-off'}${blockCls}${struck}">${name}</span>`;
+  };
+  const reserve = r.reserve ? { a: r.reserve.amount, r: r.reserve.rationale } : { a: '-', r: '-' };
+  return `<div class="pv-verdict pv-verdict--${dec}">
+    <div class="pv-verdict-row">
+      <div class="pv-verdict-left">
+        <div>
+          <div class="pv-verdict-ord">04 &nbsp;the verdict</div>
+          <div class="pv-verdict-word">${esc(dec)}</div>
+        </div>
+        <div class="pv-lattice">${lat('allow', 0)}${lat('escalate', 1)}${lat('block', 2)}</div>
+        <div class="pv-verdict-detail">${esc(outcome)}<br>${v} violation${v === 1 ? '' : 's'} · ${u} undecidable · ${cl} clear</div>
+      </div>
+      <div class="pv-verdict-reserve">reserve <span class="pv-strong">${esc(reserve.a)}</span><br>rationale <span class="pv-strong">${esc(reserve.r)}</span></div>
+    </div>
+    <p class="pv-verdict-line">${esc(line)}</p>
+  </div>`;
+}
+
+function pvChecks() {
+  const r = state.run;
+  const order = { violation: 0, undecidable: 1, clear: 2 };
+  const rows = r
+    ? r.findings.slice().sort((a, b) => order[a.result] - order[b.result]).map((f) => {
+        const cls = f.result === 'violation' ? ' pv-check--violation' : f.result === 'undecidable' ? ' pv-check--undecidable' : '';
+        return `<div class="pv-check${cls}">
+          <div class="pv-check-status"><span class="pv-check-swatch"></span><span class="pv-check-word">${esc(f.result)}</span></div>
+          <div class="pv-check-code">${esc(f.code)}</div>
+          <div class="pv-check-ev">${esc(f.evidence)}</div>
+        </div>`;
+      }).join('')
+    : `<div class="pv-sub" style="padding:14px 0">pick a run above to see the per-line checks</div>`;
+  return `<div class="pv-panel">
+    <div class="pv-head-row">
+      <div class="pv-head"><span class="pv-ordinal">05 &nbsp;the checks</span><span class="pv-sub">worst first</span></div>
+      <div class="pv-check-chips">
+        <span class="pv-check-chip">deterministic FP <b>0.0%</b> n=813</span>
+        <span class="pv-check-chip">semantic <b>27.8%</b> [12–51] n=18</span>
+        <span class="pv-check-chip pv-check-chip--withheld">semantic FP: not measurable</span>
+      </div>
+    </div>
+    <div class="pv-checks">${rows}</div>
+  </div>`;
+}
+
+function pvCertChain() {
+  const r = state.run;
+  const chain = state.chain;
+  const cert = r
+    ? `<div class="pv-cert">
+        <div class="pv-cert-head">${CERT_SEAL}<div><div class="pv-cert-hash">${esc(r.certShort)}</div><div class="pv-cert-sub">${r.certVerifies ? 'signed · tamper-evident' : 'SIGNATURE DID NOT VERIFY'}</div></div></div>
+        ${r.certV2.map((f) => `<div class="pv-cert-row"><div class="pv-cert-k">${esc(f.k)}</div><div class="pv-cert-v${f.brk === 'break-all' ? ' brk' : ''}">${esc(f.v)}</div></div>`).join('')}
+      </div>`
+    : `<div class="pv-sub" style="padding:14px 0">no certificate yet</div>`;
+
+  const entries = chain && chain.entries ? chain.entries : [];
+  const nodes = entries.map((e) => `<div class="pv-node">
+      <div class="pv-node-dot" style="border-color:${e.decision === 'allow' ? 'var(--go)' : e.decision === 'escalate' ? 'var(--haldi)' : 'var(--vermilion)'}"></div>
+      <div class="pv-node-top"><span class="pv-node-decision" style="color:${e.decision === 'allow' ? 'var(--go)' : e.decision === 'escalate' ? '#9a7a00' : 'var(--vermilion)'}">${esc(e.decision)}</span><span class="pv-node-time">${esc(e.time)}</span></div>
+      <div class="pv-node-link">${esc(e.prev)} → ${esc(e.hash)}</div>
+    </div>`).join('');
+  const head = chain ? chain.head : '-';
+  const running = state.running;
+  const stateWord = running ? 'checking' : 'idle';
+  const stateNote = running ? 'running the real gate · deterministic checkers, judge, lattice join, Ed25519' : 'the seal holds still - a state, not a spinner';
+
+  return `<div class="pv-panel pv-panel--last pv-certzone">
+    <div>
+      <div class="pv-head" style="margin-bottom:16px"><span class="pv-ordinal">06 &nbsp;the certificate</span><span class="pv-sub--mono" style="color:var(--muted)">Ed25519</span></div>
+      ${cert}
+    </div>
+    <div class="pv-chain">
+      <div class="pv-chain-head">
+        <div class="pv-head"><span class="pv-ordinal">07 &nbsp;the chain</span><span class="pv-sub--mono" style="color:var(--muted)">append-only</span></div>
+        <span class="pv-chain-headchip">head ${esc(head)}</span>
+      </div>
+      <div class="pv-spine">
+        <div class="pv-spine-rule"></div>
+        ${nodes}
+        <div class="pv-node pv-node--pending">
+          <div class="pv-node-dot"></div>
+          <div class="pv-node-decision">${running ? 'signing' : 'pending'}</div>
+          <div class="pv-node-note">${running ? 'hashing the cart and the decision' : esc(head) + ' → next run appends here'}</div>
+        </div>
+      </div>
+      <div class="pv-chain-state${running ? ' is-checking' : ''}">
+        ${STATE_SEAL(running)}
+        <div><div class="pv-chain-state-word">${stateWord}</div><div class="pv-chain-state-note">${esc(stateNote)}</div></div>
+      </div>
+    </div>
   </div>`;
 }
 
 function renderPlay() {
-  const meta = state.meta;
-  const r = state.run;
-
-  renderActionBar();
-
-  if (!meta) {
-    $('#pk-play-left').innerHTML = `<div class="pk-panel"><div class="pk-empty">Loading…</div></div>`;
-    $('#pk-play-right').innerHTML = '';
+  if (!state.meta) {
+    $('#view-play').innerHTML = `<div class="pv-play">${pvNavbar()}<div class="pv-panel"><div class="pv-sub">Loading…</div></div></div>`;
     return;
   }
-
-  const poisonIndex = r ? r.poisonIndex : null;
-  const catalogueLabel = poisonIndex !== null
-    ? `${meta.catalogue.length} items · one description carries an injected instruction`
-    : r
-      ? `${meta.catalogue.length} items · clean`
-      : `${meta.catalogue.length} items · pick a run above`;
-
-  // The mandate panel reflects the run in view; before any run, a short prompt.
-  const mandatePanel = r
-    ? `<div class="pk-panel">
-        <div class="pk-panel-head">
-          <div class="pk-label pk-label--dim">The mandate · signed by the human</div>
-          <div class="pk-micro">key ${esc(meta.keyId)}</div>
-        </div>
-        <p class="pk-quote">“${esc(r.instruction)}”</p>
-        <table class="pk-kv"><tbody>${kvRows(r.constraints)}</tbody></table>
-      </div>`
-    : `<div class="pk-panel">
-        <div class="pk-panel-head">
-          <div class="pk-label pk-label--dim">The mandate · signed by the human</div>
-          <div class="pk-micro">key ${esc(meta.keyId)}</div>
-        </div>
-        <div class="pk-empty">Pick a run above, or build your own, to see the instruction it is checked against</div>
-      </div>`;
-
-  const customPanel = state.showCustom ? renderCustomPanel() : '';
-
-  /* left column */
-  const left =
-    customPanel + mandatePanel +
-    `<div class="pk-panel">
-      <div class="pk-panel-head">
-        <div class="pk-label pk-label--dim">The catalogue the agent chooses from</div>
-        <div class="pk-micro">${esc(catalogueLabel)}</div>
-      </div>
-      <table class="pk-tbl">
-        <thead><tr>
-          <th style="width:28px;padding-left:0">#</th>
-          <th>product</th>
-          <th style="width:190px">declared category</th>
-          <th class="pk-r pk-last" style="width:96px">price</th>
-        </tr></thead>
-        <tbody>${meta.catalogue.map((p, i) => {
-          const poisoned = poisonIndex !== null && i === poisonIndex;
-          return `<tr>
-            <td class="pk-idx">${esc(p.idx)}</td>
-            <td>${esc(p.name)}${poisoned
-              ? `<div class="pk-poison">${esc(meta.payload)}</div>
-                 <div class="pk-poison-tag">merchant-controlled text · read by the agent</div>`
-              : ''}</td>
-            <td class="pk-cat">${esc(p.category)}</td>
-            <td class="pk-r pk-last pk-num">${esc(p.price)}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>
-    </div>`;
-
-  /* cart */
-  const cartBlock =
-    `<div class="pk-panel">
-      <div class="pk-panel-head">
-        <div class="pk-label">What the agent put in the cart</div>
-        <div class="pk-micro">${r ? 'cart ' + esc(r.cartHashShort) : 'cart -'}</div>
-      </div>
-      ${r
-        ? `<table class="pk-tbl">
-            <thead><tr>
-              <th>line</th>
-              <th style="width:170px">category</th>
-              <th class="pk-r" style="width:52px">qty</th>
-              <th class="pk-r pk-last" style="width:110px">line total</th>
-            </tr></thead>
-            <tbody>
-              ${r.cart.map((l) => `<tr>
-                <td style="padding-block:11px">${esc(l.name)}</td>
-                <td class="pk-cat" style="padding-block:11px">${esc(l.category)}</td>
-                <td class="pk-r pk-num" style="padding-block:11px">${esc(l.qty)}</td>
-                <td class="pk-r pk-last pk-num" style="padding-block:11px">${esc(l.total)}</td>
-              </tr>`).join('')}
-              <tr style="border-bottom:0">
-                <td colspan="3" class="pk-carttotal-l">Cart total</td>
-                <td class="pk-carttotal-v">${esc(r.cartTotal)}</td>
-              </tr>
-            </tbody>
-          </table>`
-        : `<div class="pk-empty">No run yet - press a run button above</div>`}
-    </div>`;
-
-  /* waiting - a state, not a spinner */
-  const waiting = state.running
-    ? `<div class="pk-checking">
-         ${SEAL_ASKING(44)}
-         <div>
-           <div class="pk-checking-word">checking</div>
-           <div class="pk-checking-stage">${esc(state.stage)}</div>
-         </div>
-       </div>`
-    : '';
-
-  /* an outage renders as an outage, never as a verdict */
   const failure = state.error
-    ? `<div class="pk-panel">
-        <div class="pk-label pk-label--dim" style="margin-bottom:12px">The gate did not complete</div>
-        <div class="pk-finding pk-finding--undecidable">
-          <div class="pk-finding-code">GATE_UNAVAILABLE</div>
-          <div class="pk-finding-ev">${esc(state.error)} - this is an outage, not a decision. No certificate was issued.</div>
-          <div class="pk-finding-status">undecidable</div>
-        </div>
-      </div>`
+    ? `<div class="pv-panel"><div class="pv-head" style="margin-bottom:12px"><span class="pv-ordinal">the gate did not complete</span></div>
+        <div class="pv-check pv-check--undecidable"><div class="pv-check-status"><span class="pv-check-swatch"></span><span class="pv-check-word">undecidable</span></div>
+        <div class="pv-check-code">GATE_UNAVAILABLE</div><div class="pv-check-ev">${esc(state.error)} - an outage, not a decision. No certificate was issued.</div></div></div>`
     : '';
-
-  /* verdict band */
-  const dec = r ? r.decision : null;
-  let verdict = '';
-  if (dec === 'allow') {
-    verdict =
-      `<div class="pk-verdict pk-verdict--allow">
-        <div class="pk-verdict-top">
-          <div>
-            <div class="pk-label pk-label--dim">Verdict</div>
-            <div class="pk-verdict-word">allow</div>
-            <div class="pk-verdict-gloss">The cart matches what was asked for.</div>
-          </div>
-          <div class="pk-strip">
-            <span class="pk-on">allow</span><span class="pk-off">escalate</span><span class="pk-off">block</span>
-          </div>
-        </div>
-      </div>`;
-  } else if (dec === 'escalate') {
-    const u = r.findings.find((f) => f.result === 'undecidable');
-    verdict =
-      `<div class="pk-verdict pk-verdict--escalate">
-        <div class="pk-verdict-top">
-          <div>
-            <div class="pk-label" style="color:var(--pk-ink)">Verdict · a hand is raised</div>
-            <div class="pk-verdict-word">escalate</div>
-            <div class="pk-verdict-gloss">${esc(u ? u.evidence : 'A checker could not decide, so the decision rose.')}</div>
-          </div>
-          <div class="pk-strip">
-            <span class="pk-struck">allow</span><span class="pk-on">escalate</span><span class="pk-off">block</span>
-          </div>
-        </div>
-      </div>`;
-  } else if (dec === 'block') {
-    verdict =
-      `<div class="pk-verdict pk-verdict--block">
-        <div class="pk-verdict-top">
-          <div>
-            <div class="pk-label">Verdict · order not created</div>
-            <div class="pk-verdict-word">block</div>
-          </div>
-          <div class="pk-strip">
-            <span class="pk-struck">allow</span><span class="pk-struck">escalate</span><span class="pk-on">block</span>
-          </div>
-        </div>
-        <p>Nothing in this refusal read the prose. <b>decision = max(deterministic, semantic)</b></p>
-      </div>`;
-  }
-
-  /* per-line evidence, grouped violations -> undecidables -> clears */
-  const findingRow = (f) =>
-    `<div class="pk-finding pk-finding--${f.result}">
-      <div class="pk-finding-code">${esc(f.code)}</div>
-      <div class="pk-finding-ev">${esc(f.evidence)}</div>
-      <div class="pk-finding-status">${esc(f.result)}</div>
+  $('#view-play').innerHTML =
+    `<div class="pv-play">
+      ${pvNavbar()}
+      ${pvRunbar()}
+      ${pvSandbox()}
+      ${pvInstruction()}
+      ${pvShelf()}
+      ${pvCart()}
+      ${pvVerdict()}
+      ${failure}
+      ${pvChecks()}
+      ${pvCertChain()}
     </div>`;
-
-  let findings = '';
-  if (r && r.findings.length) {
-    const v = r.findings.filter((f) => f.result === 'violation');
-    const u = r.findings.filter((f) => f.result === 'undecidable');
-    const c = r.findings.filter((f) => f.result === 'clear');
-    findings =
-      `<div class="pk-panel">
-        <div class="pk-label pk-label--dim" style="margin-bottom:14px">Per-line evidence · ${v.length} violation${v.length === 1 ? '' : 's'} · ${u.length} undecidable · ${c.length} clear</div>
-        ${v.map(findingRow).join('')}${u.map(findingRow).join('')}${c.map(findingRow).join('')}
-      </div>`;
-  }
-
-  /* certificate */
-  const certBlock = r
-    ? `<div class="pk-panel">
-        <div class="pk-panel-head">
-          <div class="pk-label pk-label--dim">The signed certificate</div>
-          <div class="pk-micro">tamper-evident, not tamper-proof</div>
-        </div>
-        <div class="pk-cert">
-          <table><tbody>${kvRows(r.certificate)}</tbody></table>
-          <div class="pk-cert-foot">
-            ${SEAL_SIGNED_INK(40)}
-            <div>cert ${esc(r.certShort)}<br>
-              <small>Ed25519, signed server-side under key ${esc(r.keyId)} · signature ${r.certVerifies ? 'verifies' : 'DOES NOT VERIFY'} · the private key never reaches this page</small>
-            </div>
-          </div>
-        </div>
-      </div>`
-    : '';
-
-  /* audit chain */
-  const ch = state.chain;
-  const chainBlock =
-    `<div class="pk-chainpanel">
-      <div class="pk-panel-head">
-        <div class="pk-label">The audit chain</div>
-        <div class="pk-micro">head ${esc(ch ? ch.head : '-')}${ch ? ' · ' + (ch.valid ? 'valid' : `${ch.breaks} BREAKS`) : ''}</div>
-      </div>
-      ${ch && ch.entries.length
-        ? `<table class="pk-tbl pk-chain">
-            <thead><tr>
-              <th style="width:28px;padding-left:0">#</th>
-              <th style="width:120px">decision</th>
-              <th>prev → hash</th>
-              <th class="pk-r pk-last" style="width:88px">time</th>
-            </tr></thead>
-            <tbody>${ch.entries.map((e) => `<tr>
-              <td class="pk-idx">${esc(e.n)}</td>
-              <td class="pk-dec">${esc(e.decision)}</td>
-              <td class="pk-link">${esc(e.prev)}&nbsp;&nbsp;→&nbsp;&nbsp;${esc(e.hash)}</td>
-              <td class="pk-r pk-last pk-time">${esc(e.time)}</td>
-            </tr>`).join('')}</tbody>
-          </table>
-          <p class="pk-chainnote">A truncated log is internally consistent. Only an externally pinned head reveals it - which is why the head is printed above.</p>`
-        : `<div class="pk-chainempty">
-            ${SEAL_ASKING(44)}
-            <div>Chain empty · nothing signed yet</div>
-          </div>`}
-    </div>`;
-
-  $('#pk-play-left').innerHTML = left;
-  $('#pk-play-right').innerHTML = cartBlock + waiting + failure + verdict + findings + certBlock + chainBlock;
 }
+
 
 function renderCheckout() {
   const r = state.run;
@@ -768,6 +799,11 @@ function render() {
   $('#view-play').hidden = v !== 'play';
   $('#view-checkout').hidden = v !== 'checkout';
 
+  // The v2 playground carries its own Ink navbar, so the shared nav steps aside
+  // on that view and returns for the argument and checkout.
+  const sharedNav = $('.pk-nav');
+  if (sharedNav) sharedNav.hidden = v === 'play';
+
   document.querySelectorAll('[data-view]').forEach((b) => {
     if (b.dataset.view === v) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
@@ -919,6 +955,7 @@ getJSON('/api/scenario')
     state.meta = meta;
     state.chain = meta.chain;
     render();
+    ensurePlayRun();
   })
   .catch((e) => {
     state.error = e.message;

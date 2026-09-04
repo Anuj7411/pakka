@@ -16,6 +16,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/pakka.css" />
+    <link rel="stylesheet" href="/play.css" />
   </head>
   <body>
     <div class="pk-app">
@@ -293,14 +294,11 @@
         </div>
       </div>
 
-      <!-- ══ 2 · playground ═════════════════════════════════════════════ -->
-      <div id="view-play" hidden style="flex:1;display:flex;flex-direction:column">
-        <div class="pk-actionbar" id="pk-actionbar"></div>
-        <div class="pk-play">
-          <div class="pk-col-left" id="pk-play-left"></div>
-          <div class="pk-col-right" id="pk-play-right"></div>
-        </div>
-      </div>
+      <!-- ══ 2 · playground (v2) ════════════════════════════════════════
+           Filled entirely by app.js with the v2 "six objects, six forms"
+           design, which carries its own Ink navbar; the shared nav is hidden
+           on this view. -->
+      <div id="view-play" hidden></div>
 
       <!-- ══ 3 · checkout ═══════════════════════════════════════════════ -->
       <div id="view-checkout" hidden class="pk-checkout pk-shell"></div>

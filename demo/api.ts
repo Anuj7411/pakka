@@ -240,6 +240,36 @@ function mandateConstraints(m: Mandate): [string, string][] {
   ];
 }
 
+/**
+ * The cart's line against the four bounds, for the "against the bounds" grid.
+ *
+ * A display comparison, not a decision: the got/want/breach here is what the
+ * viewer reads. The verdict still comes from the real checkers, which is why the
+ * total row can show a breach (over the stated ceiling) while the certificate
+ * records no CONSTRAINT_BREACH for it - the ceiling is stated, not bound by an
+ * L1 checker, exactly as the mandate panel says.
+ */
+function boundsCompare(cart: Cart, mandate: Mandate) {
+  const line = cart.lines[0];
+  if (!line) return [];
+  const item = mandate.items[0]!;
+  const total = cart.lines.reduce((n, l) => n + l.priceMinor * l.quantity, 0);
+  const finishWanted = item.statedOptions[0] ?? '';
+  const optionValues = line.options.map((o) => o.split(':').slice(1).join(':').trim());
+  const finishGot = optionValues.join(', ') || '(none declared)';
+  const finishOk = finishWanted === '' || optionValues.some((o) => o.includes(finishWanted) || finishWanted.includes(o));
+  const stated = item.statedQuantity;
+  return [
+    { k: 'category', got: line.categoryPath[0] ?? '(none)', want: mandate.authorisedCategory,
+      breach: (line.categoryPath[0] ?? '') !== mandate.authorisedCategory },
+    { k: 'quantity', got: String(line.quantity), want: stated === null ? 'unstated' : String(stated),
+      breach: stated !== null && line.quantity > stated },
+    { k: 'total', got: RS(total), want: `<= ${RS(STATED_CEILING_PAISE)}`,
+      breach: total > STATED_CEILING_PAISE },
+    { k: 'finish', got: finishGot, want: finishWanted || '(none)', breach: !finishOk },
+  ];
+}
+
 async function runScenario(scenario: Scenario) {
   const cart = cartFrom(scenario.picks);
   const captured = scenario.judge === 'captured';
@@ -267,14 +297,20 @@ async function runScenario(scenario: Scenario) {
     judge: scenario.judge,
     instruction: scenario.mandate.text,
     constraints: mandateConstraints(scenario.mandate),
+    pickedIndex: scenario.picks[0]?.index ?? -1,
+    compare: boundsCompare(cart, scenario.mandate),
     cart: cart.lines.map((l) => ({
       name: l.name,
       category: l.categoryPath[0] ?? '(none)',
       qty: l.quantity,
+      unit: RS(l.priceMinor),
+      mismatch: (l.categoryPath[0] ?? '') !== scenario.mandate.authorisedCategory,
       total: RS(l.priceMinor * l.quantity),
     })),
     cartTotal: RS(total),
     cartHashShort: short(cert.cart_hash),
+    mandateHashShort: short(cert.mandate_hash),
+    policyShort: short(cert.policy_version),
     decision: certified.decision,
     degraded: certified.degraded,
     findings: perLineEvidence(cart, scenario.mandate, semanticLines),
@@ -301,6 +337,18 @@ async function runScenario(scenario: Scenario) {
     certShort: short(certificateHash(cert)),
     certVerifies: verifyCertificate(cert, verifier).ok,
     keyId: cert.key_id,
+    // The certificate as the v2 zone renders it: nine fields, per-field wrap.
+    certV2: [
+      { k: 'decision', v: cert.decision, brk: 'normal' },
+      { k: 'mandate', v: short(cert.mandate_hash), brk: 'break-all' },
+      { k: 'cart', v: short(cert.cart_hash), brk: 'break-all' },
+      { k: 'violations', v: cert.violations.length ? cert.violations.map((x) => x.class ?? x.source).join(', ') : '[] none', brk: 'normal' },
+      { k: 'reserve', v: reserve ? `${RS(reserve.amount_paise)} · ${reserve.rationale_code}` : 'null', brk: 'normal' },
+      { k: 'policy', v: short(cert.policy_version), brk: 'normal' },
+      { k: 'prev_hash', v: short(cert.prev_hash), brk: 'break-all' },
+      { k: 'hash', v: short(certificateHash(cert)), brk: 'break-all' },
+      { k: 'issued', v: cert.issued_at, brk: 'normal' },
+    ],
     reserve: reserve
       ? { amount: RS(reserve.amount_paise), rationale: reserve.rationale_code, fundable: reserve.fundable }
       : null,
@@ -593,9 +641,9 @@ createServer((req, res) => {
     return;
   }
 
-  if (path === '/pakka.css') {
+  if (path === '/pakka.css' || path === '/play.css') {
     res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
-    res.end(readFileSync(join(here, 'pakka.css'), 'utf8'));
+    res.end(readFileSync(join(here, path.slice(1)), 'utf8'));
     return;
   }
 
