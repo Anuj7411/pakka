@@ -39,14 +39,15 @@ import { razorpayCredentials, hasRazorpayCredentials } from '../src/config/env.j
 import type { Provider } from '../src/semantic/provider.js';
 import type { Cart, Mandate } from '../src/corpus/types.js';
 import {
-  MANDATE,
   CATALOGUE,
-  POISON_INDEX,
+  CATEGORIES,
   STATED_CEILING_PAISE,
   INJECTION_PAYLOAD,
-  agentPick,
+  SCENARIOS,
+  scenarioById,
+  buildCustom,
   cartFrom,
-  type Mode,
+  type Scenario,
 } from './scenario.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -59,13 +60,30 @@ const MODEL = 'gemini-3.1-flash-lite';
 /**
  * A judge that has been completely taken over.
  *
- * Used for every run the console makes, so what the screen shows is the gate
- * holding while the model is captured — not the model resisting.
+ * Used for most runs, so what the screen shows is the gate holding while the
+ * model is captured, not the model resisting.
  */
 const CAPTURED: Provider = {
   id: 'captured-judge',
   judge: async () => ({ verdict: 'satisfies', confidence: 1, reason: 'approved', failed: false }),
 };
+
+/**
+ * A judge that cannot be reached.
+ *
+ * `failed: true` is an outage, not an opinion. It carries `degraded` through the
+ * gate, which caps the decision at `escalate`: the fail-safe posture, shown as
+ * its own scenario rather than described. A gate that allowed on its own failure
+ * would not be a gate.
+ */
+const UNAVAILABLE: Provider = {
+  id: 'unavailable-judge',
+  judge: async () => ({ verdict: 'unsure', confidence: 0, reason: 'provider unavailable', failed: true }),
+};
+
+function providerFor(judge: Scenario['judge']): Provider {
+  return judge === 'unavailable' ? UNAVAILABLE : CAPTURED;
+}
 
 const signer = signerFromEnv();
 const verifier = verifierFromPublicKey(signer.publicKeyBase64());
@@ -77,7 +95,7 @@ const log = new AuditLog(join(packageRoot, 'audit', 'console.jsonl'));
  *
  * Two different situations that a single try/catch would flatten into one:
  * no credentials at all is a fine way to run the gate, and the console says so;
- * credentials that are present and wrong — a live key, a swapped secret — must
+ * credentials that are present and wrong - a live key, a swapped secret - must
  * stop the process. Degrading there would turn "refusing to start" into a
  * silent downgrade, which is the failure mode this project spends its whole
  * argument on.
@@ -96,7 +114,7 @@ const RS = (paise: number): string =>
 
 const short = (h: string): string => {
   const bare = h.startsWith('sha256:') ? h.slice(7) : h;
-  return bare ? `${bare.slice(0, 8)}·${bare.slice(8, 16)}` : '—';
+  return bare ? `${bare.slice(0, 8)}·${bare.slice(8, 16)}` : '-';
 };
 
 // ---------------------------------------------------------------------------
@@ -104,11 +122,11 @@ const short = (h: string): string => {
 //
 // `Certified` is branded and only `evaluate()` can construct one, which is the
 // mechanism that makes "gate before order" unforgeable. It therefore cannot be
-// rebuilt from a request body — the server has to hold it.
+// rebuilt from a request body - the server has to hold it.
 // ---------------------------------------------------------------------------
 
 interface RunState {
-  readonly mode: Mode;
+  readonly scenarioId: string;
   readonly certified: Certified;
   readonly cart: Cart;
   readonly view: unknown;
@@ -171,7 +189,7 @@ function perLineEvidence(cart: Cart, mandate: Mandate, semanticViolatedLineIds: 
         code: 'semantic · not consulted',
         result: 'clear',
         evidence:
-          'The deterministic layer settled this line, so the judge was never called — ' +
+          'The deterministic layer settled this line, so the judge was never called - ' +
           'under the lattice nothing it returned could have lowered the decision',
       });
     } else if (semanticViolatedLineIds.has(line.lineId)) {
@@ -209,17 +227,30 @@ function chainView() {
   return { records: v.length, valid: v.ok, breaks: v.breaks.length, head: short(v.head), entries };
 }
 
-async function runOnce(mode: Mode) {
-  const picks = agentPick(mode);
-  const cart = cartFrom(picks);
+/** The mandate's checkable bounds, as label/value rows for the mandate panel. */
+function mandateConstraints(m: Mandate): [string, string][] {
+  return [
+    ['authorised category', m.authorisedCategory],
+    ['stated quantity', m.items[0]!.statedQuantity === null ? 'unstated' : String(m.items[0]!.statedQuantity)],
+    ['stated finish', m.items[0]!.statedOptions.join(', ') || 'none'],
+    // Printed as unbound rather than dropped: the instruction says it, and no
+    // deterministic checker binds it. Hiding the row would hide the gap.
+    ['stated ceiling', `${RS(STATED_CEILING_PAISE)} · stated, not bound by any L1 checker`],
+    ['mandate expires', 'task-scoped · TBAC, not object-scoped'],
+  ];
+}
+
+async function runScenario(scenario: Scenario) {
+  const cart = cartFrom(scenario.picks);
+  const captured = scenario.judge === 'captured';
 
   const certified = await evaluate({
-    mandate: MANDATE,
+    mandate: scenario.mandate,
     cart,
-    provider: CAPTURED,
+    provider: providerFor(scenario.judge),
     signer,
     log,
-    model: { id: `${MODEL} (captured)`, temperature: 0 },
+    model: captured ? { id: `${MODEL} (captured)`, temperature: 0 } : null,
     reserve: { merchantId: 'merchant-demo', customerId: 'customer-demo' },
   });
 
@@ -231,10 +262,14 @@ async function runOnce(mode: Mode) {
   const reserve = cert.reserve;
 
   const view = {
-    mode,
+    scenario: { id: scenario.id, title: scenario.title, blurb: scenario.blurb, expect: scenario.expect },
+    poisonIndex: scenario.poisonIndex,
+    judge: scenario.judge,
+    instruction: scenario.mandate.text,
+    constraints: mandateConstraints(scenario.mandate),
     cart: cart.lines.map((l) => ({
       name: l.name,
-      category: l.categoryPath[0] ?? '—',
+      category: l.categoryPath[0] ?? '(none)',
       qty: l.quantity,
       total: RS(l.priceMinor * l.quantity),
     })),
@@ -242,18 +277,18 @@ async function runOnce(mode: Mode) {
     cartHashShort: short(cert.cart_hash),
     decision: certified.decision,
     degraded: certified.degraded,
-    findings: perLineEvidence(cart, MANDATE, semanticLines),
+    findings: perLineEvidence(cart, scenario.mandate, semanticLines),
     certificate: [
       ['decision', cert.decision],
       ['mandate_hash', cert.mandate_hash],
       ['cart_hash', cert.cart_hash],
-      ['violations', cert.violations.length ? cert.violations.map((v) => v.class ?? v.source).join(', ') : '[] — none'],
+      ['violations', cert.violations.length ? cert.violations.map((v) => v.class ?? v.source).join(', ') : '[] - none'],
       ['reserve', reserve
         ? `${RS(reserve.amount_paise)} · ${reserve.rationale_code} · fundable ${reserve.fundable}`
         : 'null'],
       ['oc228 proof', reserve
         ? `${reserve.constraint_proof.oc228} · ${reserve.constraint_proof.verifier_version}`
-        : '—'],
+        : '-'],
       ['policy_version', cert.policy_version],
       ['model', cert.model ? `${cert.model.id} · temperature ${cert.model.temperature}` : 'none'],
       ['degraded', String(cert.degraded)],
@@ -272,7 +307,7 @@ async function runOnce(mode: Mode) {
     chain: chainView(),
   };
 
-  last = { mode, certified, cart, view };
+  last = { scenarioId: scenario.id, certified, cart, view };
   return view;
 }
 
@@ -341,7 +376,7 @@ async function createRealOrder() {
  *   1. the order id must be the order THIS process created for this run;
  *   2. on a success callback, the signature must verify under the key secret;
  *   3. the payment is then FETCHED from Razorpay, and its own `status`,
- *      `amount` and `order_id` are what get reported — not the browser's.
+ *      `amount` and `order_id` are what get reported - not the browser's.
  *
  * Step 3 is the one that matters. Without it the page would be reporting what
  * it was told, which is exactly the posture this whole project argues against.
@@ -402,7 +437,7 @@ async function confirmPayment(body: {
       errorDescription: payment.error_description ?? null,
     },
     orderId,
-    certificate: cert ? short(certificateHash(cert)) : '—',
+    certificate: cert ? short(certificateHash(cert)) : '-',
   };
 }
 
@@ -438,7 +473,7 @@ function json(res: ServerResponse, body: unknown, status = 200): void {
  *   - script only from self and Razorpay Checkout;
  *   - Google Fonts stylesheet, and its font files from gstatic;
  *   - `style-src` allows inline because the ported design carries `style=""`
- *     attributes verbatim from the handoff — removing them would be the
+ *     attributes verbatim from the handoff - removing them would be the
  *     redesign the port contract forbids;
  *   - the Razorpay family for the checkout iframe and its XHRs, and no more.
  * `object-src 'none'`, `base-uri 'self'` and `frame-ancestors 'none'` close the
@@ -450,7 +485,7 @@ function json(res: ServerResponse, body: unknown, status = 200): void {
  */
 const CSP = [
   "default-src 'self'",
-  // Razorpay Checkout loads from several of its own subdomains — the SDK from
+  // Razorpay Checkout loads from several of its own subdomains - the SDK from
   // checkout., risk-detection from cdn., more as they add them. We already
   // trust Razorpay with the iframe and every XHR, so a compromise of a Razorpay
   // origin already means a compromised checkout; a wildcard over their family
@@ -483,23 +518,14 @@ createServer((req, res) => {
 
   if (path === '/api/scenario') {
     json(res, {
-      instruction: MANDATE.text,
-      constraints: [
-        ['authorised category', MANDATE.authorisedCategory],
-        ['stated quantity', String(MANDATE.items[0]!.statedQuantity)],
-        ['stated finish', MANDATE.items[0]!.statedOptions.join(', ')],
-        // Printed as unbound rather than dropped: the instruction says it, and
-        // no deterministic checker binds it. Hiding the row would hide the gap.
-        ['stated ceiling', `${RS(STATED_CEILING_PAISE)} · stated, not bound by any L1 checker`],
-        ['mandate expires', 'task-scoped · TBAC, not object-scoped'],
-      ],
+      scenarios: SCENARIOS.map((s) => ({ id: s.id, title: s.title, blurb: s.blurb, expect: s.expect })),
       catalogue: CATALOGUE.map((p, i) => ({
         idx: String(i).padStart(2, '0'),
         name: p.name,
         category: p.category,
         price: RS(p.pricePaise),
       })),
-      poisonIndex: POISON_INDEX,
+      categories: CATEGORIES,
       payload: INJECTION_PAYLOAD,
       keyId: signer.keyId,
       razorpay: razorpay.enabled ? { enabled: true, keyId: razorpay.keyId } : { enabled: false, reason: razorpay.reason },
@@ -508,12 +534,39 @@ createServer((req, res) => {
     return;
   }
 
-  if (path === '/api/run') {
-    const mode: Mode = url.includes('mode=poisoned') ? 'poisoned' : 'clean';
-    runOnce(mode).then(
+  // A preset run: GET /api/run?scenario=<id>. The custom run is a POST, below.
+  if (path === '/api/run' && req.method !== 'POST') {
+    const id = new URL(url, 'http://x').searchParams.get('scenario') ?? '';
+    const scenario = scenarioById(id);
+    if (!scenario) {
+      json(res, { error: `unknown scenario: ${id}` }, 400);
+      return;
+    }
+    runScenario(scenario).then(
       (r) => json(res, r),
       (e: Error) => json(res, { error: e.message }, 500),
     );
+    return;
+  }
+
+  // A custom run: POST /api/run with { itemIndex, quantity, statedQuantity, authorisedCategory }.
+  if (path === '/api/run' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        const b = (body ?? {}) as Record<string, unknown>;
+        const built = buildCustom({
+          itemIndex: b['itemIndex'] as number,
+          quantity: b['quantity'] as number,
+          statedQuantity: (b['statedQuantity'] ?? null) as number | null,
+          authorisedCategory: b['authorisedCategory'] as string,
+        });
+        if ('error' in built) {
+          json(res, { error: built.error }, 400);
+          return;
+        }
+        return runScenario(built).then((r) => json(res, r));
+      })
+      .catch((e: Error) => json(res, { error: e.message }, 400));
     return;
   }
 
@@ -578,6 +631,6 @@ createServer((req, res) => {
 
 console.log(`signing key : ${signer.keyId} (Ed25519)`);
 console.log(`audit log   : ${log.path}`);
-console.log(`razorpay    : ${razorpay.enabled ? `${razorpay.keyId} (test mode)` : `off — ${razorpay.reason}`}`);
+console.log(`razorpay    : ${razorpay.enabled ? `${razorpay.keyId} (test mode)` : `off - ${razorpay.reason}`}`);
 console.log(`judge       : captured stub · satisfies at 1.00, every line`);
 console.log(`serving     : http://localhost:${PORT}`);

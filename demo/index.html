@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pakka — did it buy the right thing?</title>
+    <title>Pakka - did it buy the right thing?</title>
     <meta
       name="description"
       content="Pre-authorisation conformance gate for agent-made purchases. Checks an agent's cart against the human instruction that authorised it, refuses to let the model approve anything, and signs the answer."
@@ -74,8 +74,8 @@
 
             <div class="pk-lattice">
               <div class="pk-lattice-row">
-                <span class="pk-lattice-word">allow</span>
-                <span class="pk-lattice-gloss">silence · no colour spent</span>
+                <span class="pk-lattice-word pk-lattice-word--allow">allow</span>
+                <span class="pk-lattice-gloss">the cart matched the ask</span>
               </div>
               <div class="pk-lattice-row">
                 <span class="pk-lattice-word pk-lattice-word--escalate">escalate</span>
@@ -151,9 +151,9 @@
             </p>
           </div>
           <div class="pk-attack-cols">
-            <p>The agent obeys completely — a hard drive, quantity 3, for a wall-sconce request.</p>
+            <p>The agent obeys completely - a hard drive, quantity 3, for a wall-sconce request.</p>
             <p>The gate blocks it, and nothing in that refusal read the prose. It compared a declared category field.</p>
-            <p>The judge is captured throughout — hardcoded to approve. It changes nothing.</p>
+            <p>The judge is captured throughout - hardcoded to approve. It changes nothing.</p>
           </div>
           <button class="pk-btn pk-btn--danger" style="margin-top:36px" data-act="go-poisoned">Watch it get blocked</button>
         </div>
@@ -173,7 +173,7 @@
               <div class="pk-evclaim">A real shopping agent diverges from its instruction</div>
               <div class="pk-evcaveat">
                 Every flagged case read by hand before publication. One model, one prompt, no
-                retries — not a universal rate.
+                retries - not a universal rate.
               </div>
               <!-- Shared 0–60% scale across every row, so the bars are comparable. -->
               <div class="pk-bar">
@@ -244,7 +244,7 @@
             <div style="min-width:0">
               <div class="pk-evclaim">OC-228 reserve constraint violations</div>
               <div class="pk-evcaveat">
-                Worth nothing alone — a verifier returning [] scores zero too. Reported only beside
+                Worth nothing alone - a verifier returning [] scores zero too. Reported only beside
                 per-rule sensitivity: 500/500 caught, twelve rules, no exceptions.
               </div>
             </div>
@@ -274,13 +274,13 @@
             <div>
               <div class="pk-label pk-ord">06 · what is incomplete</div>
               <p>
-                Seven limits are written down — an unpublished rate, a false positive against real
+                Seven limits are written down - an unpublished rate, a false positive against real
                 units, tamper-evident rather than tamper-proof certificates, and OC-228 parameters
                 that are triangulated rather than primary.
               </p>
               <!-- The seven limits live in the README's "What it does not do".
                    This used to point at #evidence, which is five measured rows
-                   on this page — a different list, and not seven. -->
+                   on this page - a different list, and not seven. -->
               <a class="pk-link" href="https://github.com/Anuj7411/pakka#what-it-does-not-do"
                  target="_blank" rel="noopener noreferrer">Read them in the repo</a>
             </div>
@@ -295,15 +295,7 @@
 
       <!-- ══ 2 · playground ═════════════════════════════════════════════ -->
       <div id="view-play" hidden style="flex:1;display:flex;flex-direction:column">
-        <div class="pk-actionbar">
-          <span class="pk-label">Run the agent</span>
-          <button class="pk-btn pk-btn--solid pk-btn--run" data-act="run-poisoned">Run poisoned catalogue</button>
-          <button class="pk-btn pk-btn--ghost pk-btn--run" data-act="run-clean">Run clean catalogue</button>
-          <button class="pk-btn pk-btn--reset" data-act="reset">Reset</button>
-          <span class="pk-barnote">
-            Judge captured for both runs — <b>satisfies</b> at 1.00 every line. Watch it make no difference.
-          </span>
-        </div>
+        <div class="pk-actionbar" id="pk-actionbar"></div>
         <div class="pk-play">
           <div class="pk-col-left" id="pk-play-left"></div>
           <div class="pk-col-right" id="pk-play-right"></div>
@@ -318,7 +310,7 @@
       No Subresource Integrity hash here, deliberately. Razorpay ships
       checkout.js as a continuously-updated payment SDK and publishes no SRI
       digest for it; pinning one would break checkout on their next release.
-      It cannot reach the gate regardless — the decision, the certificate and
+      It cannot reach the gate regardless - the decision, the certificate and
       the audit record were all written server-side before this page was
       served, and the payment it returns is re-fetched from Razorpay by the
       server before anything is reported as settled.

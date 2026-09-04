@@ -1,5 +1,5 @@
 /**
- * Pakka console — the ported design of record, wired to the real gate.
+ * Pakka console - the ported design of record, wired to the real gate.
  *
  * Plain ES module, no framework, no build step. Nothing about a decision is
  * computed here: the browser posts a run to `demo/api.ts`, which calls the same
@@ -20,8 +20,8 @@
 /* ── seals ───────────────────────────────────────────────────────────────
  * Inlined rather than linked so they take `currentColor` and cost no request.
  * Geometry is the brand's, unchanged: chamfer top-right, butt caps, mitre
- * joins. The asking seal draws one stemless chevron — the layer that can raise
- * a hand — and never the stem.
+ * joins. The asking seal draws one stemless chevron - the layer that can raise
+ * a hand - and never the stem.
  */
 const SEAL_ASKING = (px) =>
   `<svg width="${px}" height="${px}" viewBox="0 0 32 32" aria-label="checking">` +
@@ -58,8 +58,12 @@ async function getJSON(url) {
 
 const state = {
   view: 'argument',
-  scenario: null,
-  mode: null,
+  /** Boot payload: the scenario list, the catalogue, categories, keys, chain. */
+  meta: null,
+  activeScenario: null,
+  showCustom: false,
+  /** The viewer's custom inputs; index null until they open the sandbox. */
+  custom: { itemIndex: 5, quantity: 3, statedQuantity: 1, authorisedCategory: 'Tools & Home Improvement' },
   running: false,
   stage: '',
   run: null,
@@ -76,8 +80,9 @@ const state = {
 
 /* ── the run ─────────────────────────────────────────────────────────── */
 
-async function run(mode) {
-  state.mode = mode;
+/** Shared prologue: clear the last run, show the waiting seal, then fetch. */
+async function performRun(label, fetcher) {
+  state.activeScenario = label;
   state.running = true;
   state.stage = 'normalising mandate and cart';
   state.run = null;
@@ -85,16 +90,25 @@ async function run(mode) {
   state.pay = 'idle';
   state.order = null;
   state.orderError = null;
+  state.payment = null;
   render();
 
   // Two frames so the asking seal is actually on screen before the request
-  // blocks. It holds still while it is there — it is a state, not a spinner.
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // blocks. It holds still while it is there: it is a state, not a spinner.
+  // Raced against a timeout because requestAnimationFrame is paused in a
+  // background tab: without the fallback, starting a run and switching away
+  // would stall it until you came back.
+  await new Promise((r) => {
+    let done = false;
+    const fin = () => { if (!done) { done = true; r(); } };
+    requestAnimationFrame(() => requestAnimationFrame(fin));
+    setTimeout(fin, 150);
+  });
   state.stage = 'real gate · deterministic checkers, judge, lattice join, Ed25519';
   render();
 
   try {
-    const view = await getJSON(`/api/run?mode=${mode}`);
+    const view = await fetcher();
     if (view.error) throw new Error(view.error);
     state.run = view;
     state.chain = view.chain;
@@ -108,13 +122,30 @@ async function run(mode) {
   }
 }
 
+function runScenario(id) {
+  state.showCustom = false;
+  return performRun(id, () => getJSON(`/api/run?scenario=${encodeURIComponent(id)}`));
+}
+
+function runCustom() {
+  return performRun('custom', () =>
+    fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state.custom),
+    }).then((r) => r.json()),
+  );
+}
+
 function reset() {
-  state.mode = null;
+  state.activeScenario = null;
+  state.showCustom = false;
   state.run = null;
   state.error = null;
   state.pay = 'idle';
   state.order = null;
   state.orderError = null;
+  state.payment = null;
   render();
   // The chain is not reset: it is a real append-only log, and a Reset button
   // that emptied it would be advertising exactly the property it does not have.
@@ -226,7 +257,7 @@ async function doPay(vpa) {
     },
   });
 
-  // A declined payment carries no signature, so it is settled by id alone —
+  // A declined payment carries no signature, so it is settled by id alone -
   // the server still re-fetches it and still checks it belongs to this order.
   rzp.on('payment.failed', (e) => {
     const d = (e && e.error) || {};
@@ -272,32 +303,115 @@ const PAY_STATUS = {
   confirming: 'verifying the signature and re-fetching the payment',
 };
 
+function renderActionBar() {
+  const meta = state.meta;
+  if (!meta) { $('#pk-actionbar').innerHTML = `<span class="pk-label">Loading…</span>`; return; }
+
+  const chips = meta.scenarios
+    .map((s) => {
+      const on = state.activeScenario === s.id && !state.showCustom;
+      return `<button class="pk-chip-run${on ? ' is-active' : ''}" data-act="run" data-id="${esc(s.id)}"
+                title="${esc(s.blurb)}"><span class="pk-chip-run-title">${esc(s.title)}</span>
+                <span class="pk-chip-run-tag pk-tag-${esc(s.expect)}">${esc(s.expect)}</span></button>`;
+    })
+    .join('');
+
+  const customOn = state.showCustom;
+  const note = state.run && state.run.judge === 'unavailable'
+    ? 'The model layer is unreachable, so the gate fails safe to a human. It cannot fail to allow.'
+    : 'The judge is captured: <b>satisfies</b> at 1.00, every line. Watch it change nothing.';
+
+  $('#pk-actionbar').innerHTML =
+    `<span class="pk-label">Choose a run</span>
+     ${chips}
+     <button class="pk-chip-run${customOn ? ' is-active' : ''}" data-act="toggle-custom">
+       <span class="pk-chip-run-title">Build your own</span>
+       <span class="pk-chip-run-tag">custom</span>
+     </button>
+     <button class="pk-btn pk-btn--reset" data-act="reset">Reset</button>
+     <span class="pk-barnote">${note}</span>`;
+}
+
+function renderCustomPanel() {
+  const meta = state.meta;
+  const c = state.custom;
+  const opts = meta.catalogue
+    .map((p, i) => `<option value="${i}"${i === c.itemIndex ? ' selected' : ''}>${esc(p.idx + '  ' + p.name)}</option>`)
+    .join('');
+  const cats = meta.categories
+    .map((cat) => `<option value="${esc(cat)}"${cat === c.authorisedCategory ? ' selected' : ''}>${esc(cat)}</option>`)
+    .join('');
+  const statedOpts = ['unstated', '1', '2', '3', '5', '10']
+    .map((v) => {
+      const val = v === 'unstated' ? 'null' : v;
+      const sel = String(c.statedQuantity) === val ? ' selected' : '';
+      return `<option value="${val}"${sel}>${v}</option>`;
+    })
+    .join('');
+
+  return `<div class="pk-panel">
+    <div class="pk-panel-head">
+      <div class="pk-label pk-label--dim">Build your own run</div>
+      <div class="pk-micro">you set the inputs</div>
+    </div>
+    <div class="pk-form">
+      <label class="pk-field"><span>Agent buys</span>
+        <select class="pk-select" data-custom="itemIndex">${opts}</select></label>
+      <label class="pk-field"><span>Quantity</span>
+        <input class="pk-input" type="number" min="1" max="99" value="${esc(c.quantity)}" data-custom="quantity"></label>
+      <label class="pk-field"><span>Instruction said (qty)</span>
+        <select class="pk-select" data-custom="statedQuantity">${statedOpts}</select></label>
+      <label class="pk-field"><span>Authorised category</span>
+        <select class="pk-select" data-custom="authorisedCategory">${cats}</select></label>
+    </div>
+    <button class="pk-btn pk-btn--solid pk-btn--md" data-act="run-custom" style="margin-top:16px">Run it through the gate</button>
+    <p class="pk-form-hint">Change the category to something the item is not in, or the quantity above what the instruction allows, and watch the gate block it. Leave them matching and it allows.</p>
+  </div>`;
+}
+
 function renderPlay() {
-  const sc = state.scenario;
+  const meta = state.meta;
   const r = state.run;
 
-  if (!sc) {
-    $('#pk-play-left').innerHTML = `<div class="pk-panel"><div class="pk-empty">Loading the scenario…</div></div>`;
+  renderActionBar();
+
+  if (!meta) {
+    $('#pk-play-left').innerHTML = `<div class="pk-panel"><div class="pk-empty">Loading…</div></div>`;
     $('#pk-play-right').innerHTML = '';
     return;
   }
 
-  const catalogueLabel =
-    state.mode === 'poisoned' ? '9 items · one description carries an injected instruction'
-    : state.mode === 'clean' ? '9 items · clean'
-    : '9 items · not yet run';
+  const poisonIndex = r ? r.poisonIndex : null;
+  const catalogueLabel = poisonIndex !== null
+    ? `${meta.catalogue.length} items · one description carries an injected instruction`
+    : r
+      ? `${meta.catalogue.length} items · clean`
+      : `${meta.catalogue.length} items · pick a run above`;
+
+  // The mandate panel reflects the run in view; before any run, a short prompt.
+  const mandatePanel = r
+    ? `<div class="pk-panel">
+        <div class="pk-panel-head">
+          <div class="pk-label pk-label--dim">The mandate · signed by the human</div>
+          <div class="pk-micro">key ${esc(meta.keyId)}</div>
+        </div>
+        <p class="pk-quote">“${esc(r.instruction)}”</p>
+        <table class="pk-kv"><tbody>${kvRows(r.constraints)}</tbody></table>
+      </div>`
+    : `<div class="pk-panel">
+        <div class="pk-panel-head">
+          <div class="pk-label pk-label--dim">The mandate · signed by the human</div>
+          <div class="pk-micro">key ${esc(meta.keyId)}</div>
+        </div>
+        <div class="pk-empty">Pick a run above, or build your own, to see the instruction it is checked against</div>
+      </div>`;
+
+  const customPanel = state.showCustom ? renderCustomPanel() : '';
 
   /* left column */
   const left =
+    customPanel + mandatePanel +
     `<div class="pk-panel">
-      <div class="pk-panel-head">
-        <div class="pk-label pk-label--dim">The mandate · signed by the human</div>
-        <div class="pk-micro">key ${esc(sc.keyId)}</div>
-      </div>
-      <p class="pk-quote">“${esc(sc.instruction)}”</p>
-      <table class="pk-kv"><tbody>${kvRows(sc.constraints)}</tbody></table>
-    </div>
-    <div class="pk-panel">
       <div class="pk-panel-head">
         <div class="pk-label pk-label--dim">The catalogue the agent chooses from</div>
         <div class="pk-micro">${esc(catalogueLabel)}</div>
@@ -309,12 +423,12 @@ function renderPlay() {
           <th style="width:190px">declared category</th>
           <th class="pk-r pk-last" style="width:96px">price</th>
         </tr></thead>
-        <tbody>${sc.catalogue.map((p, i) => {
-          const poisoned = state.mode === 'poisoned' && i === sc.poisonIndex;
+        <tbody>${meta.catalogue.map((p, i) => {
+          const poisoned = poisonIndex !== null && i === poisonIndex;
           return `<tr>
             <td class="pk-idx">${esc(p.idx)}</td>
             <td>${esc(p.name)}${poisoned
-              ? `<div class="pk-poison">${esc(sc.payload)}</div>
+              ? `<div class="pk-poison">${esc(meta.payload)}</div>
                  <div class="pk-poison-tag">merchant-controlled text · read by the agent</div>`
               : ''}</td>
             <td class="pk-cat">${esc(p.category)}</td>
@@ -329,7 +443,7 @@ function renderPlay() {
     `<div class="pk-panel">
       <div class="pk-panel-head">
         <div class="pk-label">What the agent put in the cart</div>
-        <div class="pk-micro">${r ? 'cart ' + esc(r.cartHashShort) : 'cart —'}</div>
+        <div class="pk-micro">${r ? 'cart ' + esc(r.cartHashShort) : 'cart -'}</div>
       </div>
       ${r
         ? `<table class="pk-tbl">
@@ -352,10 +466,10 @@ function renderPlay() {
               </tr>
             </tbody>
           </table>`
-        : `<div class="pk-empty">No run yet — press a run button above</div>`}
+        : `<div class="pk-empty">No run yet - press a run button above</div>`}
     </div>`;
 
-  /* waiting — a state, not a spinner */
+  /* waiting - a state, not a spinner */
   const waiting = state.running
     ? `<div class="pk-checking">
          ${SEAL_ASKING(44)}
@@ -372,7 +486,7 @@ function renderPlay() {
         <div class="pk-label pk-label--dim" style="margin-bottom:12px">The gate did not complete</div>
         <div class="pk-finding pk-finding--undecidable">
           <div class="pk-finding-code">GATE_UNAVAILABLE</div>
-          <div class="pk-finding-ev">${esc(state.error)} — this is an outage, not a decision. No certificate was issued.</div>
+          <div class="pk-finding-ev">${esc(state.error)} - this is an outage, not a decision. No certificate was issued.</div>
           <div class="pk-finding-status">undecidable</div>
         </div>
       </div>`
@@ -388,7 +502,7 @@ function renderPlay() {
           <div>
             <div class="pk-label pk-label--dim">Verdict</div>
             <div class="pk-verdict-word">allow</div>
-            <div class="pk-verdict-gloss">No colour is spent on the happy path.</div>
+            <div class="pk-verdict-gloss">The cart matches what was asked for.</div>
           </div>
           <div class="pk-strip">
             <span class="pk-on">allow</span><span class="pk-off">escalate</span><span class="pk-off">block</span>
@@ -471,7 +585,7 @@ function renderPlay() {
     `<div class="pk-chainpanel">
       <div class="pk-panel-head">
         <div class="pk-label">The audit chain</div>
-        <div class="pk-micro">head ${esc(ch ? ch.head : '—')}${ch ? ' · ' + (ch.valid ? 'valid' : `${ch.breaks} BREAKS`) : ''}</div>
+        <div class="pk-micro">head ${esc(ch ? ch.head : '-')}${ch ? ' · ' + (ch.valid ? 'valid' : `${ch.breaks} BREAKS`) : ''}</div>
       </div>
       ${ch && ch.entries.length
         ? `<table class="pk-tbl pk-chain">
@@ -488,7 +602,7 @@ function renderPlay() {
               <td class="pk-r pk-last pk-time">${esc(e.time)}</td>
             </tr>`).join('')}</tbody>
           </table>
-          <p class="pk-chainnote">A truncated log is internally consistent. Only an externally pinned head reveals it — which is why the head is printed above.</p>`
+          <p class="pk-chainnote">A truncated log is internally consistent. Only an externally pinned head reveals it - which is why the head is printed above.</p>`
         : `<div class="pk-chainempty">
             ${SEAL_ASKING(44)}
             <div>Chain empty · nothing signed yet</div>
@@ -501,7 +615,7 @@ function renderPlay() {
 
 function renderCheckout() {
   const r = state.run;
-  const sc = state.scenario;
+  const sc = state.meta;
   const dec = r ? r.decision : null;
 
   const headline = dec === 'block' ? 'There is nothing to pay for.' : dec ? 'Confirm and pay' : 'No cart yet';
@@ -510,7 +624,7 @@ function renderCheckout() {
       ? 'The gate refused this cart before authorisation. A blocked cart never reaches order creation, so no payment is attempted at all.'
       : dec
         ? 'The cart passed the gate. The certificate is already signed and chained; the cart hash is re-derived here and checked against it before the order is created.'
-        : 'Run the gate in the playground first — checkout binds to a certificate, not to a cart.';
+        : 'Run the gate in the playground first - checkout binds to a certificate, not to a cart.';
 
   let body = '';
 
@@ -529,7 +643,7 @@ function renderCheckout() {
       `<div class="pk-refused">
         <div class="pk-label">Order not created</div>
         <div class="pk-refused-word">block</div>
-        <p>The gate refused this cart before authorisation, so there is nothing to pay for. Nothing was sent to Razorpay — <code>createOrder</code> takes a certified decision and throws on a block, so this is enforced by the gate rather than by this page.</p>
+        <p>The gate refused this cart before authorisation, so there is nothing to pay for. Nothing was sent to Razorpay - <code>createOrder</code> takes a certified decision and throws on a block, so this is enforced by the gate rather than by this page.</p>
         <button class="pk-btn pk-btn--onink" data-act="go-play">Back to the playground</button>
       </div>`;
   } else {
@@ -551,7 +665,7 @@ function renderCheckout() {
             <span class="pk-paystatus">${esc(PAY_STATUS[state.pay] ?? PAY_STATUS.idle)}</span>
           </div>
         </div>
-        <div class="pk-testnote">Razorpay Checkout, test mode. The signature on the callback is verified server-side and the payment is then re-fetched from Razorpay — this page reports that status, not Checkout's. In test mode a <em>cancelled</em> UPI payment resolves as a successful one, so cancellation can only be tested in live mode. Printed here rather than left to look like a success we earned.</div>`;
+        <div class="pk-testnote">Razorpay Checkout, test mode. The signature on the callback is verified server-side and the payment is then re-fetched from Razorpay - this page reports that status, not Checkout's. In test mode a <em>cancelled</em> UPI payment resolves as a successful one, so cancellation can only be tested in live mode. Printed here rather than left to look like a success we earned.</div>`;
     }
 
     if (state.pay === 'failed') {
@@ -561,17 +675,17 @@ function renderCheckout() {
         ? [
             ['razorpay payment_id', p.payment.id + ' · fetched from Razorpay'],
             ['status', p.payment.status],
-            ['code', p.payment.errorCode || '—'],
-            ['reason', p.payment.errorReason || '—'],
-            ['step', p.payment.errorStep || '—'],
-            ['description', p.payment.errorDescription || '—'],
+            ['code', p.payment.errorCode || '-'],
+            ['reason', p.payment.errorReason || '-'],
+            ['step', p.payment.errorStep || '-'],
+            ['description', p.payment.errorDescription || '-'],
             ['razorpay order_id', p.orderId],
-            ['cart hash re-check', o ? (o.recheck.ok ? 'match · ' + o.recheck.certificate : 'MISMATCH · ' + o.recheck.reason) : '—'],
+            ['cart hash re-check', o ? (o.recheck.ok ? 'match · ' + o.recheck.certificate : 'MISMATCH · ' + o.recheck.reason) : '-'],
             ['gate certificate', r.certShort + ' · unaffected'],
           ]
         : [
             ['code', state.failCode],
-            ['reason', state.orderError || '—'],
+            ['reason', state.orderError || '-'],
             ['razorpay order_id', o ? o.order.id + ' · real, test mode' : 'no order created'],
             ['gate certificate', r.certShort + ' · unaffected'],
           ];
@@ -582,7 +696,7 @@ function renderCheckout() {
             <span class="pk-payfail-code">${esc(state.failCode)}</span>
           </div>
           <table class="pk-kv"><tbody>${kvRows(rows)}</tbody></table>
-          <p class="pk-payprose">The certificate is unaffected. It records what was asked, what was in the cart, and what the gate decided — a failed payment does not change any of those, and the conformance evidence survives for the dispute.</p>
+          <p class="pk-payprose">The certificate is unaffected. It records what was asked, what was in the cart, and what the gate decided - a failed payment does not change any of those, and the conformance evidence survives for the dispute.</p>
           <div class="pk-paybtns">
             <button class="pk-btn pk-btn--sm" data-act="retry">Try the payment again</button>
             <button class="pk-btn pk-btn--sm pk-btn--quiet" data-act="pay-success">Pay with success@razorpay</button>
@@ -603,7 +717,7 @@ function renderCheckout() {
           : 'not present on this callback'],
         ['razorpay order_id', p.orderId],
         ['cart hash re-check', o.recheck.ok ? 'match' : 'MISMATCH · ' + o.recheck.reason],
-        ['re-check certificate', o.recheck.ok ? o.recheck.certificate + ' · signed and chained' : '—'],
+        ['re-check certificate', o.recheck.ok ? o.recheck.certificate + ' · signed and chained' : '-'],
         ['gate certificate', r.certShort + ' · evidence.others[]'],
       ];
       body +=
@@ -617,12 +731,12 @@ function renderCheckout() {
 
   const rz = sc && sc.razorpay;
   const summaryRows = [
-    ['cart total', r ? r.cartTotal : '—'],
+    ['cart total', r ? r.cartTotal : '-'],
     ['gate decision', dec || 'not run'],
-    ['cart hash', r ? r.cartHashShort : '—'],
-    ['certificate', r ? r.certShort : '—'],
-    ['reserve (OC-228)', r && r.reserve ? r.reserve.amount : '—'],
-    ['reserve rationale', r && r.reserve ? r.reserve.rationale : '—'],
+    ['cart hash', r ? r.cartHashShort : '-'],
+    ['certificate', r ? r.certShort : '-'],
+    ['reserve (OC-228)', r && r.reserve ? r.reserve.amount : '-'],
+    ['reserve rationale', r && r.reserve ? r.reserve.rationale : '-'],
     ['key mode', rz && rz.enabled ? `${rz.keyId} · guard refuses a live key` : 'rzp_test_ · not configured'],
   ];
 
@@ -754,13 +868,13 @@ const ACTIONS = {
   'go-argument': () => go('argument'),
   'go-play': () => go('play'),
   'go-checkout': () => go('checkout'),
-  'go-poisoned': () => { go('play'); run('poisoned'); },
-  // Its twin actually runs. A button labelled "Run it clean" that only changed
-  // view left the previous block verdict on screen underneath the word "clean",
-  // which reads as a clean cart being blocked.
-  'go-clean': () => { go('play'); run('clean'); },
-  'run-poisoned': () => run('poisoned'),
-  'run-clean': () => run('clean'),
+  // The landing-page and empty-state CTAs run the two headline scenarios.
+  'go-poisoned': () => { go('play'); runScenario('injection'); },
+  'go-clean': () => { go('play'); runScenario('honest'); },
+  // A preset chip. `el.dataset.id` names the scenario.
+  run: (el) => runScenario(el.dataset.id),
+  'toggle-custom': () => { state.showCustom = !state.showCustom; if (state.showCustom) state.activeScenario = 'custom'; render(); },
+  'run-custom': () => runCustom(),
   reset,
   'vpa-success': () => { state.vpa = 'success@razorpay'; render(); },
   'vpa-failure': () => { state.vpa = 'failure@razorpay'; render(); },
@@ -774,12 +888,24 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   const act = el.dataset.act || 'go-' + el.dataset.view;
   const fn = ACTIONS[act];
-  if (fn) { e.preventDefault(); fn(); }
+  if (fn) { e.preventDefault(); fn(el); }
 });
 
-document.addEventListener('input', (e) => {
-  if (e.target.id === 'pk-vpa') state.vpa = e.target.value;
-});
+// The VPA field and the custom-run fields bind to state on edit. No re-render on
+// keystroke: the number input would lose its cursor, and the run reads state at
+// submit time regardless.
+function bindField(e) {
+  if (e.target.id === 'pk-vpa') { state.vpa = e.target.value; return; }
+  const el = e.target.closest('[data-custom]');
+  if (!el) return;
+  const k = el.dataset.custom;
+  const v = el.value;
+  if (k === 'itemIndex' || k === 'quantity') state.custom[k] = Number(v);
+  else if (k === 'statedQuantity') state.custom[k] = v === 'null' ? null : Number(v);
+  else state.custom[k] = v;
+}
+document.addEventListener('input', bindField);
+document.addEventListener('change', bindField);
 
 /* ── boot ────────────────────────────────────────────────────────────── */
 
@@ -789,9 +915,9 @@ measureNav();
 wireHero();
 
 getJSON('/api/scenario')
-  .then((sc) => {
-    state.scenario = sc;
-    state.chain = sc.chain;
+  .then((meta) => {
+    state.meta = meta;
+    state.chain = meta.chain;
     render();
   })
   .catch((e) => {

@@ -1,5 +1,5 @@
 /*
- * Pakka console — the design of record, ported to a stylesheet.
+ * Pakka console - the design of record, ported to a stylesheet.
  *
  * Source: design_handoff_pakka_console/reference/Pakka Console.dc.html, which
  * carries its values as inline styles because the prototyping environment
@@ -8,7 +8,7 @@
  * re-spaced, re-scaled or "improved".
  *
  * Theme is hardcoded to paper / editorial / kinetic, which the handoff permits.
- * `feel: austere` is still reachable — it is what the reduced-motion query does.
+ * `feel: austere` is still reachable - it is what the reduced-motion query does.
  */
 
 :root {
@@ -42,6 +42,10 @@
   --pk-navh: 59px;
 
   --pk-vermilion: #D8341B;
+  /* Green for the allow verdict. Presentation clarity, added at the viewer's
+     request; not part of the original identity. Deep enough for AA on paper. */
+  --pk-allow: #0F8A4A;
+  --pk-allow-wash: rgba(15, 138, 74, 0.06);
   --pk-ink: #0E100C;
   --pk-paper: #F5F2E9;
 }
@@ -325,6 +329,7 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
   border-bottom: 1px solid var(--pk-rule);
 }
 .pk-lattice-word { font: 500 24px/1 'Martian Mono'; color: var(--pk-fg); }
+.pk-lattice-word--allow { color: var(--pk-allow); }
 .pk-lattice-word--escalate { background: var(--pk-accent); padding: 2px 8px; }
 .pk-lattice-word--block { color: var(--pk-vermilion); }
 .pk-lattice-gloss {
@@ -563,6 +568,66 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
 }
 .pk-barnote b { color: var(--pk-fg); font-weight: 400; }
 
+/* scenario chips: a compact run picker in the action bar */
+.pk-chip-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--pk-rule-strong);
+  background: transparent;
+  color: var(--pk-fg);
+  min-height: 44px;
+  padding: 0 14px;
+  font: 500 11px/1 'Martian Mono';
+  letter-spacing: .04em;
+  white-space: nowrap;
+  transition: border-color 140ms linear, background 140ms linear, transform 140ms cubic-bezier(.2,.7,.3,1);
+}
+.pk-chip-run:hover { border-color: var(--pk-fg); transform: translateY(-2px); }
+.pk-chip-run.is-active { background: var(--pk-fg); color: var(--pk-bg); border-color: var(--pk-fg); }
+.pk-chip-run.is-active .pk-chip-run-tag { color: var(--pk-bg); border-color: currentColor; }
+.pk-chip-run-title { text-transform: none; }
+.pk-chip-run-tag {
+  font: 500 9px/1 'Martian Mono';
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border: 1px solid currentColor;
+}
+/* the verdict a chip is expected to reach, in its verdict colour */
+.pk-tag-allow { color: var(--pk-allow); }
+.pk-tag-escalate { color: #9a7a00; }        /* Haldi is too light as text on paper; darkened */
+.pk-tag-block { color: var(--pk-vermilion); }
+
+/* custom-run sandbox */
+.pk-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 14px;
+}
+.pk-field { display: flex; flex-direction: column; gap: 6px; }
+.pk-field > span {
+  font: 500 11px/1.3 'Martian Mono';
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--pk-dim);
+}
+.pk-select, .pk-input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--pk-rule-strong);
+  background: var(--pk-bg);
+  color: var(--pk-fg);
+  font: 400 14px/1 'Martian Mono';
+}
+.pk-select:focus-visible, .pk-input:focus-visible { outline: 2px solid var(--pk-fg); outline-offset: 2px; }
+.pk-form-hint {
+  margin: 14px 0 0;
+  font: 400 13px/1.55 Archivo;
+  color: var(--pk-muted);
+  max-width: 620px;
+}
+
 .pk-play {
   flex: 1;
   display: grid;
@@ -668,7 +733,7 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
   font-variant-numeric: tabular-nums;
 }
 
-/* Waiting. It is a state, not a spinner — it does not move. */
+/* Waiting. It is a state, not a spinner - it does not move. */
 .pk-checking {
   padding: 36px 32px;
   border-bottom: 1px solid var(--pk-rule-strong);
@@ -702,11 +767,20 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
 .pk-strip .pk-on { border-bottom: 2px solid currentColor; padding-bottom: 4px; }
 .pk-strip .pk-struck { text-decoration: line-through; }
 
+/* allow now reads green, at the viewer's request: in a live demo, a plain black
+   verdict looked like "nothing happened / broken" next to the red block. This
+   overrides BRAND.md's "allow spends no colour" for presentation clarity, and
+   the same green is carried into the design brief so a redesign keeps it.
+   Structure mirrors the block band (coloured top border + coloured word) so the
+   three verdicts read as one family: green go, amber hand, red stop. */
 .pk-verdict--allow {
-  border-top: 1px solid var(--pk-rule-strong);
+  background: var(--pk-allow-wash);
+  border-top: 4px solid var(--pk-allow);
   border-bottom: 1px solid var(--pk-rule-strong);
 }
+.pk-verdict--allow .pk-verdict-word { color: var(--pk-allow); }
 .pk-verdict--allow .pk-verdict-gloss { color: var(--pk-dim-6); }
+.pk-verdict--allow .pk-strip .pk-on { color: var(--pk-allow); }
 .pk-verdict--allow .pk-strip .pk-off { color: var(--pk-dim-35); }
 
 .pk-verdict--escalate {
@@ -1012,7 +1086,7 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
 
 /* ── focus ────────────────────────────────────────────────────────────────
  * Neither the handoff nor BRAND.md specifies a focus ring, and the prototype
- * had none — which leaves keyboard users with whatever the browser draws over
+ * had none - which leaves keyboard users with whatever the browser draws over
  * a custom button, and on the Ink-filled buttons that is close to invisible.
  *
  * Ink rather than Haldi: rule 09 forbids Haldi as text on Paper at 1.5:1, and
@@ -1090,7 +1164,7 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
   .pk-finding-status { text-align: left !important; order: -1; }
   .pk-barnote { display: none !important; }
   .pk-actionbar { padding-block: 10px !important; gap: 8px !important; }
-  .pk-actionbar .pk-btn--run,
+  .pk-actionbar .pk-chip-run,
   .pk-actionbar .pk-btn--reset {
     flex: 1 1 auto;
     min-height: 44px !important;
@@ -1102,7 +1176,7 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
   /* The block band is the one place the layout does not fit a phone: `block` at
      88px measures 293px and the lattice strip another 69px, inside a 326px
      content box. `space-between` then pushes the strip 3px past the viewport.
-     Wrapping costs nothing — the word keeps its size, the strip keeps its
+     Wrapping costs nothing - the word keeps its size, the strip keeps its
      alignment, and the checklist's "no horizontal scroll at 390px" holds. */
   .pk-verdict-top { flex-wrap: wrap; row-gap: 14px; }
   .pk-strip { width: 100%; }
