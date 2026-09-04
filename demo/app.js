@@ -61,6 +61,8 @@ const state = {
   /** Boot payload: the scenario list, the catalogue, categories, keys, chain. */
   meta: null,
   activeScenario: null,
+  /** Which example each direction is currently showing; repeat-press cycles. */
+  exampleIndex: {},
   showCustom: false,
   /** The viewer's custom inputs; index null until they open the sandbox. */
   custom: { itemIndex: 5, quantity: 3, statedQuantity: 1, authorisedCategory: 'Tools & Home Improvement' },
@@ -122,9 +124,17 @@ async function performRun(label, fetcher) {
   }
 }
 
+// A direction carries several examples. Pressing a direction that is already
+// active advances to its next example (wrapping); pressing a different one keeps
+// wherever that direction was left. So repeated presses cycle the domains.
 function runScenario(id) {
   state.showCustom = false;
-  return performRun(id, () => getJSON(`/api/run?scenario=${encodeURIComponent(id)}`));
+  const dir = state.meta && state.meta.directions.find((d) => d.id === id);
+  const count = dir ? dir.exampleCount : 1;
+  let n = state.exampleIndex[id] ?? 0;
+  if (state.activeScenario === id) n = (n + 1) % count;
+  state.exampleIndex[id] = n;
+  return performRun(id, () => getJSON(`/api/run?direction=${encodeURIComponent(id)}&example=${n}`));
 }
 
 function runCustom() {
@@ -369,13 +379,22 @@ function pvNavbar() {
 
 function pvRunbar() {
   const meta = state.meta;
-  const tabs = (meta ? meta.scenarios : [])
-    .map((s) => {
-      const on = state.activeScenario === s.id && !state.showCustom;
-      return `<button class="pv-tab${on ? ' is-active' : ''}" data-act="run" data-id="${esc(s.id)}" title="${esc(s.blurb)}">
-        <div class="pv-tab-top"><span class="pv-tab-dot pv-bg-${esc(s.expect)}"></span>
-          <span class="pv-tab-title">${esc(s.title)}</span></div>
-        <div class="pv-tab-verdict pv-verdict-${esc(s.expect)}${s.expect === 'escalate' ? '-c' : ''}">${esc(s.expect)}</div>
+  const tabs = (meta ? meta.directions : [])
+    .map((d) => {
+      const on = state.activeScenario === d.id && !state.showCustom;
+      const n = (state.exampleIndex[d.id] ?? 0) + 1;
+      // more than one example: show a cycle affordance so it is clear the tab
+      // does something new on a second press.
+      const cycle = d.exampleCount > 1
+        ? `<span class="pv-tab-cycle" title="press again for another example">${on ? n + '/' + d.exampleCount : '↻ ' + d.exampleCount}</span>`
+        : '';
+      return `<button class="pv-tab${on ? ' is-active' : ''}" data-act="run" data-id="${esc(d.id)}" title="${esc(d.blurb)}">
+        <div class="pv-tab-top"><span class="pv-tab-dot pv-bg-${esc(d.expect)}"></span>
+          <span class="pv-tab-title">${esc(d.title)}</span></div>
+        <div class="pv-tab-bottom">
+          <span class="pv-tab-verdict pv-verdict-${esc(d.expect)}${d.expect === 'escalate' ? '-c' : ''}">${esc(d.expect)}</span>
+          ${cycle}
+        </div>
       </button>`;
     })
     .join('');
@@ -391,7 +410,7 @@ function pvSandbox() {
   if (!state.showCustom) return '';
   const meta = state.meta;
   const c = state.custom;
-  const items = meta.catalogue
+  const items = meta.sandboxCatalogue
     .map((p, i) => `<option value="${i}"${i === c.itemIndex ? ' selected' : ''}>${esc(p.idx + '  ' + p.name)}</option>`)
     .join('');
   const cats = meta.categories
@@ -439,33 +458,36 @@ function pvShelf() {
   const meta = state.meta;
   const r = state.run;
   if (!meta) return '';
+  const catalogue = r ? r.catalogue : [];
   const picked = r ? r.pickedIndex : -1;
   const poison = r ? r.poisonIndex : null;
-  const cards = meta.catalogue.map((p, i) => {
+  const poisonRow = poison !== null ? String(poison).padStart(2, '0') : '';
+  const cards = catalogue.map((p, i) => {
     const chosen = i === picked;
     const poisoned = i === poison;
     const cls = poisoned ? ' is-poisoned' : chosen ? ' is-chosen' : '';
     const flags =
       (poisoned ? '<span class="pv-card-poison"></span>' : '') +
       (chosen ? '<span class="pv-card-picked">agent picked</span>' : '');
-    const elec = p.category !== 'Tools & Home Improvement';
+    const outOfCat = r && p.category !== r.compare[0].want;
     return `<div class="pv-card${cls}">
       <div class="pv-card-top"><span class="pv-card-idx">${esc(p.idx)}</span><div class="pv-card-flags">${flags}</div></div>
       <div class="pv-card-name">${esc(p.name)}</div>
-      <div class="pv-card-foot"><span class="pv-card-cat${elec ? ' pv-card-cat--elec' : ''}">${esc(CAT_SHORT(p.category))}</span><span class="pv-card-price">${esc(p.price)}</span></div>
+      <div class="pv-card-foot"><span class="pv-card-cat${outOfCat ? ' pv-card-cat--elec' : ''}">${esc(CAT_SHORT(p.category))}</span><span class="pv-card-price">${esc(p.price)}</span></div>
     </div>`;
   }).join('');
+  const domain = r ? r.domain : '';
   const note = poison !== null
-    ? `<span class="pv-sub--mono" style="color:var(--vermilion)">row 05 carries an injected instruction</span>`
+    ? `<span class="pv-sub--mono" style="color:var(--vermilion)">row ${poisonRow} carries an injected instruction</span>`
     : `<span class="pv-sub--mono" style="color:var(--muted)">${r ? 'clean' : 'pick a run above'}</span>`;
   const payload = poison !== null
     ? `<div class="pv-payload">
-        <div class="pv-payload-head"><b>Injected instruction found in row 05</b><span>merchant-controlled text · read by the agent</span></div>
+        <div class="pv-payload-head"><b>Injected instruction found in row ${poisonRow}</b><span>merchant-controlled text · read by the agent</span></div>
         <p>${esc(meta.payload)}</p>
       </div>` : '';
   return `<div class="pv-panel">
     <div class="pv-head-row">
-      <div class="pv-head"><span class="pv-ordinal">02 &nbsp;the shelf</span><span class="pv-sub">nine products the agent could pick from</span></div>
+      <div class="pv-head"><span class="pv-ordinal">02 &nbsp;the shelf</span><span class="pv-sub">${catalogue.length} products${domain ? ' · ' + esc(domain) : ''}</span></div>
       ${note}
     </div>
     <div class="pv-shelf">${cards}</div>

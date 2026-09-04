@@ -72,13 +72,27 @@
 .pv-nav-right {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 20px;
   font: 400 11px 'Martian Mono';
-  color: rgba(245, 242, 233, .7);
+  color: rgba(245, 242, 233, .6);
 }
-.pv-nav-right a { color: rgba(245, 242, 233, .7); text-decoration: none; }
-.pv-nav-right a:hover { color: var(--paper); }
-.pv-nav-right a[aria-current='page'] { color: var(--paper); }
+/* the two cross-page links were nearly invisible at .7 on Ink; they are now
+   near-full Paper, sized up, with a Haldi underline on hover and an active
+   underline, so they read clearly as navigation. */
+.pv-nav-right a {
+  color: var(--paper);
+  text-decoration: none;
+  font: 500 12px/1 'Martian Mono';
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding-bottom: 3px;
+  border-bottom: 2px solid transparent;
+  transition: border-color 140ms linear;
+}
+.pv-nav-right a:hover { border-bottom-color: var(--haldi); }
+.pv-nav-right a[aria-current='page'] { border-bottom-color: var(--paper); }
+/* a divider before the read-only status text */
+.pv-nav-policy { padding-left: 20px; border-left: 1px solid rgba(245, 242, 233, .2); }
 .pv-nav-signed { color: var(--haldi); }
 
 /* ── run bar ───────────────────────────────────────────────────────────── */
@@ -110,13 +124,39 @@
   text-align: left;
   cursor: pointer;
   font-family: Archivo;
-  transition: background 120ms linear;
+  /* the lift the previous run buttons had, brought back: hover raises the tab
+     with a hard drop shadow, the press settles it. */
+  transition: background 120ms linear, transform 140ms cubic-bezier(.2, .7, .3, 1), box-shadow 140ms linear;
+  position: relative;
 }
-.pv-tab:hover { background: rgba(14, 16, 12, .04); }
+.pv-tab:hover {
+  background: var(--surface);
+  transform: translateY(-3px);
+  box-shadow: 0 3px 0 var(--ink);
+  z-index: 1;
+}
+.pv-tab:active { transform: translateY(0); box-shadow: none; }
 .pv-tab.is-active {
   background: var(--surface);
   border-bottom-color: var(--ink);
 }
+.pv-tab-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  padding-left: 15px;
+}
+.pv-tab-cycle {
+  font: 500 9px/1 'Martian Mono';
+  letter-spacing: .06em;
+  color: var(--muted);
+  border: 1px solid var(--rule-18);
+  padding: 2px 5px;
+  white-space: nowrap;
+}
+.pv-tab.is-active .pv-tab-cycle { border-color: var(--rule-strong); color: var(--ink); }
 .pv-tab-top { display: flex; align-items: center; gap: 8px; }
 .pv-tab-dot { width: 7px; height: 7px; flex: none; }
 .pv-tab-title {
@@ -128,8 +168,6 @@
 }
 .pv-tab.is-active .pv-tab-title { color: var(--ink); }
 .pv-tab-verdict {
-  margin-top: 5px;
-  padding-left: 15px;
   font: 500 10px/1 'Martian Mono';
   letter-spacing: .08em;
   text-transform: uppercase;

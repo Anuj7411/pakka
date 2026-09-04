@@ -39,15 +39,15 @@ import { razorpayCredentials, hasRazorpayCredentials } from '../src/config/env.j
 import type { Provider } from '../src/semantic/provider.js';
 import type { Cart, Mandate } from '../src/corpus/types.js';
 import {
-  CATALOGUE,
+  SANDBOX_CATALOGUE,
   CATEGORIES,
   STATED_CEILING_PAISE,
   INJECTION_PAYLOAD,
-  SCENARIOS,
-  scenarioById,
+  DIRECTIONS,
+  directionById,
   buildCustom,
   cartFrom,
-  type Scenario,
+  type Example,
 } from './scenario.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -81,7 +81,7 @@ const UNAVAILABLE: Provider = {
   judge: async () => ({ verdict: 'unsure', confidence: 0, reason: 'provider unavailable', failed: true }),
 };
 
-function providerFor(judge: Scenario['judge']): Provider {
+function providerFor(judge: Example['judge']): Provider {
   return judge === 'unavailable' ? UNAVAILABLE : CAPTURED;
 }
 
@@ -270,14 +270,26 @@ function boundsCompare(cart: Cart, mandate: Mandate) {
   ];
 }
 
-async function runScenario(scenario: Scenario) {
-  const cart = cartFrom(scenario.picks);
-  const captured = scenario.judge === 'captured';
+/** Metadata about which direction and example this run came from. */
+interface RunMeta {
+  readonly id: string;
+  readonly title: string;
+  readonly blurb: string;
+  readonly expect: string;
+  readonly domain: string;
+  readonly exampleIndex: number;
+  readonly exampleCount: number;
+}
+
+async function runExample(example: Example, meta: RunMeta) {
+  const cart = cartFrom(example);
+  const captured = example.judge === 'captured';
+  const mandate = example.mandate;
 
   const certified = await evaluate({
-    mandate: scenario.mandate,
+    mandate,
     cart,
-    provider: providerFor(scenario.judge),
+    provider: providerFor(example.judge),
     signer,
     log,
     model: captured ? { id: `${MODEL} (captured)`, temperature: 0 } : null,
@@ -292,19 +304,29 @@ async function runScenario(scenario: Scenario) {
   const reserve = cert.reserve;
 
   const view = {
-    scenario: { id: scenario.id, title: scenario.title, blurb: scenario.blurb, expect: scenario.expect },
-    poisonIndex: scenario.poisonIndex,
-    judge: scenario.judge,
-    instruction: scenario.mandate.text,
-    constraints: mandateConstraints(scenario.mandate),
-    pickedIndex: scenario.picks[0]?.index ?? -1,
-    compare: boundsCompare(cart, scenario.mandate),
+    scenario: { id: meta.id, title: meta.title, blurb: meta.blurb, expect: meta.expect },
+    domain: meta.domain,
+    exampleIndex: meta.exampleIndex,
+    exampleCount: meta.exampleCount,
+    // Each example brings its own catalogue - the shelf changes per domain.
+    catalogue: example.catalogue.map((p, i) => ({
+      idx: String(i).padStart(2, '0'),
+      name: p.name,
+      category: p.category,
+      price: RS(p.pricePaise),
+    })),
+    poisonIndex: example.poisonIndex,
+    judge: example.judge,
+    instruction: mandate.text,
+    constraints: mandateConstraints(mandate),
+    pickedIndex: example.picks[0]?.index ?? -1,
+    compare: boundsCompare(cart, mandate),
     cart: cart.lines.map((l) => ({
       name: l.name,
       category: l.categoryPath[0] ?? '(none)',
       qty: l.quantity,
       unit: RS(l.priceMinor),
-      mismatch: (l.categoryPath[0] ?? '') !== scenario.mandate.authorisedCategory,
+      mismatch: (l.categoryPath[0] ?? '') !== mandate.authorisedCategory,
       total: RS(l.priceMinor * l.quantity),
     })),
     cartTotal: RS(total),
@@ -313,7 +335,7 @@ async function runScenario(scenario: Scenario) {
     policyShort: short(cert.policy_version),
     decision: certified.decision,
     degraded: certified.degraded,
-    findings: perLineEvidence(cart, scenario.mandate, semanticLines),
+    findings: perLineEvidence(cart, mandate, semanticLines),
     certificate: [
       ['decision', cert.decision],
       ['mandate_hash', cert.mandate_hash],
@@ -355,7 +377,7 @@ async function runScenario(scenario: Scenario) {
     chain: chainView(),
   };
 
-  last = { scenarioId: scenario.id, certified, cart, view };
+  last = { scenarioId: meta.id, certified, cart, view };
   return view;
 }
 
@@ -566,8 +588,15 @@ createServer((req, res) => {
 
   if (path === '/api/scenario') {
     json(res, {
-      scenarios: SCENARIOS.map((s) => ({ id: s.id, title: s.title, blurb: s.blurb, expect: s.expect })),
-      catalogue: CATALOGUE.map((p, i) => ({
+      directions: DIRECTIONS.map((d) => ({
+        id: d.id,
+        title: d.title,
+        blurb: d.blurb,
+        expect: d.expect,
+        exampleCount: d.examples.length,
+        domains: d.examples.map((e) => e.domain),
+      })),
+      sandboxCatalogue: SANDBOX_CATALOGUE.map((p, i) => ({
         idx: String(i).padStart(2, '0'),
         name: p.name,
         category: p.category,
@@ -582,15 +611,21 @@ createServer((req, res) => {
     return;
   }
 
-  // A preset run: GET /api/run?scenario=<id>. The custom run is a POST, below.
+  // A preset run: GET /api/run?direction=<id>&example=<n>. Custom is a POST.
   if (path === '/api/run' && req.method !== 'POST') {
-    const id = new URL(url, 'http://x').searchParams.get('scenario') ?? '';
-    const scenario = scenarioById(id);
-    if (!scenario) {
-      json(res, { error: `unknown scenario: ${id}` }, 400);
+    const params = new URL(url, 'http://x').searchParams;
+    const direction = directionById(params.get('direction') ?? '');
+    if (!direction) {
+      json(res, { error: `unknown direction: ${params.get('direction')}` }, 400);
       return;
     }
-    runScenario(scenario).then(
+    // The example index wraps, so a repeated press cycles the direction's set.
+    const n = ((Number(params.get('example')) || 0) % direction.examples.length + direction.examples.length) % direction.examples.length;
+    const example = direction.examples[n]!;
+    runExample(example, {
+      id: direction.id, title: direction.title, blurb: direction.blurb, expect: direction.expect,
+      domain: example.domain, exampleIndex: n, exampleCount: direction.examples.length,
+    }).then(
       (r) => json(res, r),
       (e: Error) => json(res, { error: e.message }, 500),
     );
@@ -612,7 +647,10 @@ createServer((req, res) => {
           json(res, { error: built.error }, 400);
           return;
         }
-        return runScenario(built).then((r) => json(res, r));
+        return runExample(built, {
+          id: 'custom', title: 'Your own run', blurb: built.domain, expect: 'allow',
+          domain: built.domain, exampleIndex: 0, exampleCount: 1,
+        }).then((r) => json(res, r));
       })
       .catch((e: Error) => json(res, { error: e.message }, 400));
     return;
