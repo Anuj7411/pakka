@@ -70,8 +70,8 @@ flowchart LR
   C["Agent's cart<br/>what it actually added"]:::agent --> GATE
   subgraph GATE["The gate"]
     direction TB
-    D["Deterministic checks<br/>scope · bounds · quantity<br/><b>provable → may block</b>"]:::det
-    S["Semantic judge<br/>is this the right thing?<br/><b>inference → may only escalate</b>"]:::sem
+    D["Deterministic checks<br/>scope, bounds, quantity<br/>provable, so it may BLOCK"]:::det
+    S["Semantic judge<br/>is this the right thing?<br/>inference, so it may only ESCALATE"]:::sem
     D --> J{{"join = max"}}:::join
     S --> J
   end
