@@ -53,7 +53,7 @@ import type { Cart, Mandate } from '../src/corpus/types.js';
 import {
   SANDBOX_CATALOGUE,
   CATEGORIES,
-  STATED_CEILING_PAISE,
+  statedCeilingPaise,
   INJECTION_PAYLOAD,
   DIRECTIONS,
   directionById,
@@ -410,7 +410,7 @@ function mandateConstraints(m: Mandate): [string, string][] {
     ['stated finish', m.items[0]!.statedOptions.join(', ') || 'none'],
     // Printed as unbound rather than dropped: the instruction says it, and no
     // deterministic checker binds it. Hiding the row would hide the gap.
-    ['stated ceiling', `${RS(STATED_CEILING_PAISE)} · stated, not bound by any L1 checker`],
+    ['stated ceiling', `${RS(statedCeilingPaise(m.mandateId))} · stated, not bound by any L1 checker`],
     ['mandate expires', 'task-scoped · TBAC, not object-scoped'],
   ];
 }
@@ -439,8 +439,8 @@ function boundsCompare(cart: Cart, mandate: Mandate) {
       breach: (line.categoryPath[0] ?? '') !== mandate.authorisedCategory },
     { k: 'quantity', got: String(line.quantity), want: stated === null ? 'unstated' : String(stated),
       breach: stated !== null && line.quantity > stated },
-    { k: 'total', got: RS(total), want: `<= ${RS(STATED_CEILING_PAISE)}`,
-      breach: total > STATED_CEILING_PAISE },
+    { k: 'total', got: RS(total), want: `<= ${RS(statedCeilingPaise(mandate.mandateId))}`,
+      breach: total > statedCeilingPaise(mandate.mandateId) },
     { k: 'finish', got: finishGot, want: finishWanted || '(none)', breach: !finishOk },
   ];
 }

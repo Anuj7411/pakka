@@ -34,6 +34,25 @@ export const CATEGORIES = [HOME, GROCERY, ELEC] as const;
 
 export const STATED_CEILING_PAISE = 400000;
 
+/**
+ * The stated price ceiling for each domain, matching the number in that
+ * mandate's own sentence. It is display-only: no L1 checker binds it (the
+ * mandate panel says so), so this changes what the bounds card shows, never a
+ * verdict. Kept per-mandate so "under Rs 1,500" in the instruction and the
+ * CEILING row can never disagree.
+ */
+const CEILING_BY_MANDATE: Readonly<Record<string, number>> = {
+  'm-home-sconce': 400000,
+  'm-grocery-pasta': 40000,
+  'm-desk-charger': 300000,
+  'm-kitchen-coffee': 150000,
+  'm-bath-rail': 250000,
+};
+
+export function statedCeilingPaise(mandateId: string): number {
+  return CEILING_BY_MANDATE[mandateId] ?? STATED_CEILING_PAISE;
+}
+
 /** The judge a run uses. `unavailable` is how the fail-safe path is shown. */
 export type JudgeMode = 'captured' | 'unavailable';
 
