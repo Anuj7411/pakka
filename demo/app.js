@@ -539,17 +539,6 @@ function go(view, push = true) {
     wheelGlide.stop();
     window.scrollTo(0, 0);
   });
-  ensurePlayRun();
-}
-
-// The v2 playground is designed around a run always being present. Opening it
-// with no run auto-runs the injection, so the page shows the full design rather
-// than an empty shell. It is a real run: it signs a certificate and grows the
-// chain, exactly like pressing the tab.
-function ensurePlayRun() {
-  if (state.view === 'play' && state.meta && !state.run && !state.running) {
-    runScenario('injection');
-  }
 }
 
 window.addEventListener('popstate', () => {
@@ -558,7 +547,6 @@ window.addEventListener('popstate', () => {
     state.view = viewFromPath(location.pathname);
     render();
   });
-  ensurePlayRun();
 });
 
 /* ── rendering ───────────────────────────────────────────────────────── */
@@ -1661,8 +1649,7 @@ getJSON('/api/scenario')
     state.meta = meta;
     state.chain = meta.chain;
     render();
-    ensurePlayRun();
-  })
+    })
   .catch((e) => {
     state.error = e.message;
     render();
