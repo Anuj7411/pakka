@@ -36,7 +36,10 @@ export interface GroqOptions {
 }
 
 export function createGroqProvider(opts: GroqOptions = {}): Provider {
-  const model = opts.model ?? 'llama-3.3-70b-versatile';
+  // Pinned to a model that is actually on Groq's current free lineup: the
+  // llama-3.3-70b id was retired. gpt-oss-120b is the flagship free model,
+  // returns clean JSON under response_format, and answers in ~0.3s.
+  const model = opts.model ?? 'openai/gpt-oss-120b';
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const doFetch = opts.fetchImpl ?? globalThis.fetch;
 
