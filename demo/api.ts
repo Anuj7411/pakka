@@ -44,6 +44,7 @@ import {
   withRateLimit,
 } from '../src/semantic/provider.js';
 import { createGeminiProvider } from '../src/semantic/gemini.js';
+import { judgeCart } from '../src/semantic/judge.js';
 import type { Cart, Mandate } from '../src/corpus/types.js';
 import {
   SANDBOX_CATALOGUE,
@@ -145,8 +146,57 @@ function recordingProvider(inner: Provider): { provider: Provider; calls: Record
  */
 function liveProvider(): { provider: Provider; calls: RecordedCall[] } {
   const budget = new CallBudget(8);
-  const cached = withCacheAndBudget(withRateLimit(createGeminiProvider(), { minIntervalMs: 800, maxRetries: 1 }), liveCache!, budget);
+  // Interactive: fail fast. On a rate limit we do NOT sit and honour Gemini's
+  // retry-after (it can be tens of seconds), because a hung run is worse than
+  // an honest fail-safe. One attempt; a 429 becomes `unsure`, which escalates.
+  // Reliability for the demo comes from the warmed cache below, not from here.
+  const cached = withCacheAndBudget(withRateLimit(createGeminiProvider(), { minIntervalMs: 0, maxRetries: 0 }), liveCache!, budget);
   return recordingProvider(cached);
+}
+
+/**
+ * Warm the cache for the three presets at boot.
+ *
+ * The presets are the demo path, and the on-disk cache is where a run gets its
+ * speed and its immunity to a mid-demo rate limit. Populating it at startup,
+ * patiently, means the first click during a demo is instant and shows real
+ * reasoning even on a fresh instance. This is not staging: the verdicts are the
+ * real model's, produced by the same call the interactive path would make, and
+ * the banner still says "from cache". It only moves the first successful call
+ * from demo-time to boot-time, where a slow retry costs nobody anything.
+ *
+ * It uses `judgeCart` directly, not `evaluate`, so it never issues a
+ * certificate or touches the audit chain: it fills the model cache and nothing
+ * else. Failures are swallowed; the live path will simply call again.
+ */
+async function warmCache(): Promise<void> {
+  if (!LIVE_JUDGE) return;
+  // Patient here: boot is unwatched, so honouring backoff to get a real verdict
+  // is exactly the right trade.
+  // Bounded: up to 4 attempts per preset (1 + 3 retries), 12 calls under the
+  // 20-call budget. Patient enough to ride out a transient blip, not so patient
+  // that a throttled key keeps it running for minutes.
+  const budget = new CallBudget(20);
+  const warm = withCacheAndBudget(withRateLimit(createGeminiProvider(), { minIntervalMs: 1_500, maxRetries: 3 }), liveCache!, budget);
+
+  const presets = [
+    { itemIndex: 7, inject: false },
+    { itemIndex: 1, inject: false },
+    { itemIndex: 1, inject: true },
+  ];
+  let cached = 0;
+  for (const p of presets) {
+    const ex = buildCustom({ itemIndex: p.itemIndex, quantity: 1, statedQuantity: 1, authorisedCategory: 'Tools & Home Improvement', inject: p.inject });
+    if ('error' in ex) continue;
+    const cart = cartFrom(ex);
+    try {
+      const r = await judgeCart(cart, ex.mandate, assessCart(cart, ex.mandate), warm);
+      if (!r.degraded) cached++;
+    } catch {
+      /* leave it uncached; the interactive path will try again */
+    }
+  }
+  console.log(`live warm   : ${cached}/${presets.length} preset verdicts cached at boot`);
 }
 
 /** The lines the model will actually be asked about, in the order judgeCart asks. */
@@ -847,3 +897,8 @@ console.log(`razorpay    : ${razorpay.enabled ? `${razorpay.keyId} (test mode)` 
 console.log(`judge       : captured stub · satisfies at 1.00, every line`);
 console.log(`live judge   : ${LIVE_JUDGE ? `${liveModelId} · available in the sandbox` : 'off - set GEMINI_API_KEY to enable'}`);
 console.log(`serving     : http://localhost:${PORT}`);
+
+// Fire and forget, after the server is already accepting requests. Warming
+// must never delay startup or fail it - a cold cache just means the first live
+// preset call happens at demo time instead of now.
+void warmCache();
