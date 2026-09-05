@@ -35,8 +35,15 @@ import { AuditLog } from '../src/audit/log.js';
 import { signerFromEnv, verifierFromPublicKey } from '../src/cert/signing.js';
 import { certificateHash, verifyCertificate } from '../src/cert/certificate.js';
 import { createRazorpayClient, paymentSignatureMatches } from '../src/razorpay/client.js';
-import { razorpayCredentials, hasRazorpayCredentials } from '../src/config/env.js';
-import type { Provider } from '../src/semantic/provider.js';
+import { razorpayCredentials, hasRazorpayCredentials, hasGeminiKey } from '../src/config/env.js';
+import {
+  type Provider,
+  VerdictCache,
+  CallBudget,
+  withCacheAndBudget,
+  withRateLimit,
+} from '../src/semantic/provider.js';
+import { createGeminiProvider } from '../src/semantic/gemini.js';
 import type { Cart, Mandate } from '../src/corpus/types.js';
 import {
   SANDBOX_CATALOGUE,
@@ -83,6 +90,70 @@ const UNAVAILABLE: Provider = {
 
 function providerFor(judge: Example['judge']): Provider {
   return judge === 'unavailable' ? UNAVAILABLE : CAPTURED;
+}
+
+/* ── the live judge ──────────────────────────────────────────────────────
+ *
+ * Every run above uses a captured stub on purpose, so the screen shows the
+ * deterministic layer holding the line rather than the model. This is the one
+ * path where the real model runs, so a viewer can watch genuine inference: the
+ * sandbox, opt-in, only when a key is configured.
+ *
+ * The safety story is unchanged. The model is consulted only for lines the
+ * deterministic layer left unsettled, and under the lattice it can only ever
+ * escalate. A live call that fails becomes `unsure`, which escalates - it never
+ * resolves toward approval. The system instruction tells the model to ignore
+ * any instruction embedded in a product listing, which the injection preset
+ * demonstrates.
+ */
+const LIVE_JUDGE = hasGeminiKey();
+// One shared on-disk cache, so a repeated identical run is instant and free.
+const liveCache = LIVE_JUDGE ? new VerdictCache(join(packageRoot, 'audit', 'live-cache')) : null;
+const liveModelId = LIVE_JUDGE ? createGeminiProvider().id : null;
+
+interface RecordedCall {
+  verdict: string;
+  confidence: number;
+  reason: string;
+  failed: boolean;
+  ms: number;
+}
+
+/** Wraps a provider to remember every verdict it produced, in call order. */
+function recordingProvider(inner: Provider): { provider: Provider; calls: RecordedCall[] } {
+  const calls: RecordedCall[] = [];
+  return {
+    calls,
+    provider: {
+      id: inner.id,
+      async judge(req) {
+        const t = Date.now();
+        const v = await inner.judge(req);
+        calls.push({ verdict: v.verdict, confidence: v.confidence, reason: v.reason, failed: v.failed, ms: Date.now() - t });
+        return v;
+      },
+    },
+  };
+}
+
+/**
+ * A budgeted, cached, rate-limited real provider, wrapped in a recorder.
+ *
+ * Budget is per run, small: a sandbox cart judges one line. The cache is shared
+ * so the same cart never pays twice. The recorder captures what the model said
+ * for display, without a second call.
+ */
+function liveProvider(): { provider: Provider; calls: RecordedCall[] } {
+  const budget = new CallBudget(8);
+  const cached = withCacheAndBudget(withRateLimit(createGeminiProvider(), { minIntervalMs: 800, maxRetries: 1 }), liveCache!, budget);
+  return recordingProvider(cached);
+}
+
+/** The lines the model will actually be asked about, in the order judgeCart asks. */
+function consultedLineIds(cart: Cart, mandate: Mandate): string[] {
+  const flagged = new Set(assessCart(cart, mandate).violations.map((v) => v.lineId));
+  const assignment = assignLines(cart, mandate);
+  return cart.lines.filter((l) => !flagged.has(l.lineId) && assignment.get(l.lineId)).map((l) => l.lineId);
 }
 
 const signer = signerFromEnv();
@@ -153,7 +224,14 @@ let lastOrderId: string | null = null;
  * rather than per line because the certificate records only the ONE class that
  * won precedence, and a reader deserves to see what the other four said.
  */
-function perLineEvidence(cart: Cart, mandate: Mandate, semanticViolatedLineIds: Set<string>) {
+interface ModelCall { verdict: string; confidence: number; reason: string; failed: boolean; ms: number; }
+
+function perLineEvidence(
+  cart: Cart,
+  mandate: Mandate,
+  semanticViolatedLineIds: Set<string>,
+  model?: { modelByLine: Map<string, ModelCall>; live: boolean; modelId: string | null },
+) {
   const assignment = assignLines(cart, mandate);
   const assessment = assessCart(cart, mandate);
   const flagged = new Set(assessment.violations.map((v) => v.lineId));
@@ -184,6 +262,9 @@ function perLineEvidence(cart: Cart, mandate: Mandate, semanticViolatedLineIds: 
     // What the model actually did, derived rather than assumed: `judgeCart`
     // skips any line the deterministic layer already flagged, because under the
     // lattice nothing it returned could change that line's decision.
+    const live = model?.live === true;
+    const call = model?.modelByLine.get(line.lineId);
+
     if (flagged.has(line.lineId)) {
       rows.push({
         code: 'semantic · not consulted',
@@ -192,6 +273,19 @@ function perLineEvidence(cart: Cart, mandate: Mandate, semanticViolatedLineIds: 
           'The deterministic layer settled this line, so the judge was never called - ' +
           'under the lattice nothing it returned could have lowered the decision',
       });
+    } else if (live && call) {
+      // The real model ran on this line. Show exactly what it said.
+      const label = `semantic · live ${model?.modelId ?? 'model'}`;
+      const took = call.ms < 50 ? 'from cache' : `${(call.ms / 1000).toFixed(1)}s`;
+      if (call.failed) {
+        rows.push({ code: label, result: 'undecidable', evidence: `the model call failed (${call.reason}), which escalates - it can never approve` });
+      } else if (call.verdict === 'satisfies') {
+        rows.push({ code: label, result: 'clear', evidence: `"${call.reason}" (satisfies, ${took}). Under the lattice it could only have escalated, so it changed nothing` });
+      } else if (call.verdict === 'wrong_product') {
+        rows.push({ code: label, result: 'violation', evidence: `"${call.reason}" (wrong_product, ${took}). A real finding, so the decision rose to escalate` });
+      } else {
+        rows.push({ code: label, result: 'undecidable', evidence: `"${call.reason}" (unsure, ${took}), which escalates` });
+      }
     } else if (semanticViolatedLineIds.has(line.lineId)) {
       rows.push({ code: 'semantic · captured stub', result: 'violation', evidence: 'the judge returned wrong_product' });
     } else {
@@ -281,20 +375,37 @@ interface RunMeta {
   readonly exampleCount: number;
 }
 
-async function runExample(example: Example, meta: RunMeta) {
+async function runExample(example: Example, meta: RunMeta, opts: { live?: boolean } = {}) {
   const cart = cartFrom(example);
   const captured = example.judge === 'captured';
   const mandate = example.mandate;
 
+  // The one path that runs the real model. Everything else uses the stub.
+  const wantsLive = opts.live === true && LIVE_JUDGE && example.judge === 'captured';
+  const rec = wantsLive ? liveProvider() : null;
+  const model = wantsLive
+    ? { id: `${liveModelId} (live)`, temperature: 0 }
+    : captured
+      ? { id: `${MODEL} (captured)`, temperature: 0 }
+      : null;
+
   const certified = await evaluate({
     mandate,
     cart,
-    provider: providerFor(example.judge),
+    provider: rec ? rec.provider : providerFor(example.judge),
     signer,
     log,
-    model: captured ? { id: `${MODEL} (captured)`, temperature: 0 } : null,
+    model,
     reserve: { merchantId: 'merchant-demo', customerId: 'customer-demo' },
   });
+
+  // Attach each recorded verdict to the line it judged. judgeCart asks in cart
+  // order over the unsettled lines, which is exactly `consultedLineIds`.
+  const modelByLine = new Map<string, RecordedCall>();
+  if (rec) {
+    const ids = consultedLineIds(cart, mandate);
+    ids.forEach((id, i) => { const c = rec.calls[i]; if (c) modelByLine.set(id, c); });
+  }
 
   const cert = certified.certificate;
   const semanticLines = new Set(
@@ -335,7 +446,18 @@ async function runExample(example: Example, meta: RunMeta) {
     policyShort: short(cert.policy_version),
     decision: certified.decision,
     degraded: certified.degraded,
-    findings: perLineEvidence(cart, mandate, semanticLines),
+    findings: perLineEvidence(cart, mandate, semanticLines, { modelByLine, live: wantsLive, modelId: liveModelId }),
+    // What the live model did, for the sandbox banner. Always present so the
+    // client knows whether the toggle is even available.
+    live: {
+      available: LIVE_JUDGE,
+      model: liveModelId,
+      used: wantsLive,
+      consulted: rec ? rec.calls.length : 0,
+      ms: rec ? rec.calls.reduce((s, c) => s + c.ms, 0) : 0,
+      calls: rec ? rec.calls : [],
+      injected: example.injectAttribute ? true : false,
+    },
     certificate: [
       ['decision', cert.decision],
       ['mandate_hash', cert.mandate_hash],
@@ -604,6 +726,8 @@ createServer((req, res) => {
       })),
       categories: CATEGORIES,
       payload: INJECTION_PAYLOAD,
+      // Whether the sandbox can run the real model, so the client shows the toggle.
+      gemini: { available: LIVE_JUDGE, model: liveModelId },
       keyId: signer.keyId,
       razorpay: razorpay.enabled ? { enabled: true, keyId: razorpay.keyId } : { enabled: false, reason: razorpay.reason },
       chain: chainView(),
@@ -637,11 +761,13 @@ createServer((req, res) => {
     readJsonBody(req)
       .then((body) => {
         const b = (body ?? {}) as Record<string, unknown>;
+        const inject = b['inject'] === true;
         const built = buildCustom({
           itemIndex: b['itemIndex'] as number,
           quantity: b['quantity'] as number,
           statedQuantity: (b['statedQuantity'] ?? null) as number | null,
           authorisedCategory: b['authorisedCategory'] as string,
+          inject,
         });
         if ('error' in built) {
           json(res, { error: built.error }, 400);
@@ -650,7 +776,7 @@ createServer((req, res) => {
         return runExample(built, {
           id: 'custom', title: 'Your own run', blurb: built.domain, expect: 'allow',
           domain: built.domain, exampleIndex: 0, exampleCount: 1,
-        }).then((r) => json(res, r));
+        }, { live: b['live'] === true }).then((r) => json(res, r));
       })
       .catch((e: Error) => json(res, { error: e.message }, 400));
     return;
@@ -719,4 +845,5 @@ console.log(`signing key : ${signer.keyId} (Ed25519)`);
 console.log(`audit log   : ${log.path}`);
 console.log(`razorpay    : ${razorpay.enabled ? `${razorpay.keyId} (test mode)` : `off - ${razorpay.reason}`}`);
 console.log(`judge       : captured stub · satisfies at 1.00, every line`);
+console.log(`live judge   : ${LIVE_JUDGE ? `${liveModelId} · available in the sandbox` : 'off - set GEMINI_API_KEY to enable'}`);
 console.log(`serving     : http://localhost:${PORT}`);

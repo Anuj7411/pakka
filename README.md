@@ -175,9 +175,16 @@ cp .env.example .env
 # add GEMINI_API_KEY to run the real semantic judge instead of the stub
 ```
 
-The console runs fully without either: the gate is deterministic, and the demo
-uses a captured judge (a stub that says "satisfies" every time) so that what you
-see holding the line is the deterministic layer, not the model.
+The console runs fully without either: the gate is deterministic, and every
+preset run uses a captured judge (a stub that says "satisfies" every time) so
+that what you see holding the line is the deterministic layer, not the model.
+
+With `GEMINI_API_KEY` set, the **Sandbox** tab gains a "Run the real model"
+toggle and three one-click presets. This is the one place genuine inference
+runs: the real judge decides an `ITEM_SUBSTITUTION` (a brass cabinet pull is
+not a wall sconce, so it escalates), and the "Injected listing" preset plants a
+hostile instruction in the product copy to show the model ignore it. Even the
+live model can only ever escalate, never approve.
 
 </details>
 

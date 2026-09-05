@@ -68,6 +68,10 @@ const state = {
   showCustom: false,
   /** The viewer's custom inputs; index null until they open the sandbox. */
   custom: { itemIndex: 5, quantity: 3, statedQuantity: 1, authorisedCategory: 'Tools & Home Improvement' },
+  /** Sandbox: run the real Gemini judge instead of the captured stub. */
+  liveOn: false,
+  /** Sandbox: plant the injection payload in the listing, to test resistance. */
+  injectOn: false,
   running: false,
   stage: '',
   run: null,
@@ -160,13 +164,25 @@ function runScenario(id) {
 }
 
 function runCustom() {
+  const body = { ...state.custom, live: state.liveOn, inject: state.injectOn };
   return performRun('custom', () =>
     fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state.custom),
+      body: JSON.stringify(body),
     }).then((r) => r.json()),
   );
+}
+
+// The live-model presets set the four fields to a config that the deterministic
+// layer clears, so the model is actually consulted, then run with the real
+// judge. Without these a viewer who toggles "live" and runs the default (an
+// off-category item) would only ever see "not consulted".
+function runLivePreset(itemIndex, inject) {
+  state.custom = { itemIndex, quantity: 1, statedQuantity: 1, authorisedCategory: 'Tools & Home Improvement' };
+  state.liveOn = true;
+  state.injectOn = inject;
+  return runCustom();
 }
 
 function reset() {
@@ -726,7 +742,43 @@ function pvSandboxBody() {
     .map((v) => `<option value="${v === 'unstated' ? 'null' : v}"${statedVal === v ? ' selected' : ''}>${v}</option>`)
     .join('');
   const busy = state.activeScenario === 'custom' && state.running;
-  return `<div class="pv-runpanel">
+  const gem = meta.gemini || { available: false };
+  const on = state.liveOn && gem.available;
+
+  // The live-model controls. Everything else in the console uses a captured
+  // stub; this is the one place the real model runs.
+  const liveControls = gem.available
+    ? `<div class="pv-live${on ? ' is-on' : ''}">
+        <button class="pv-live-toggle${on ? ' is-on' : ''}" data-act="toggle-live" aria-pressed="${on}">
+          <span class="pv-live-switch"></span>
+          <span>Run the real model<span class="pv-live-model">${esc(gem.model || 'gemini')}</span></span>
+        </button>
+        <span class="pv-live-note">The model is asked only about lines the deterministic layer could not settle, and it can only escalate, never approve.</span>
+        <div class="pv-live-presets">
+          <button class="pv-live-preset" data-act="preset-correct">Correct product <b>model agrees</b></button>
+          <button class="pv-live-preset" data-act="preset-substitute">Plausible substitute <b>model escalates</b></button>
+          <button class="pv-live-preset" data-act="preset-injected">Injected listing <b>model resists</b></button>
+        </div>
+      </div>`
+    : `<div class="pv-live pv-live--off">
+        <span class="pv-live-note">The real model is off on this server. Set <code>GEMINI_API_KEY</code> to run genuine inference here; every run below uses the captured stub.</span>
+      </div>`;
+
+  const r = state.run;
+  const banner = state.showCustom && r && r.live && r.live.used
+    ? (() => {
+        const took = r.live.ms < 50 ? 'instantly (from cache)' : `in ${(r.live.ms / 1000).toFixed(1)}s`;
+        const what = r.live.consulted === 0
+          ? 'The deterministic layer settled every line, so the model was not consulted on this cart.'
+          : `The model ran on ${r.live.consulted} line${r.live.consulted === 1 ? '' : 's'} ${took}. It can only escalate, never approve.`;
+        const inj = r.live.injected
+          ? ' This listing carried an injected instruction; read the model\'s reasoning below to see it ignore it.'
+          : '';
+        return `<div class="pv-live-banner"><span class="pv-live-banner-dot"></span><span><b>Live ${esc(r.live.model)}.</b> ${esc(what)}${esc(inj)}</span></div>`;
+      })()
+    : '';
+
+  return `<div class="pv-runpanel pv-runpanel--sandbox">
     <div class="pv-runpanel-text">
       <div class="pv-runpanel-head">
         <span class="pv-runpanel-dot pv-tab-dot--open"></span>
@@ -740,10 +792,12 @@ function pvSandboxBody() {
         <label><span>Quantity stated</span><select class="pv-select" data-custom="statedQuantity">${stated}</select></label>
         <label><span>Authorised category</span><select class="pv-select" data-custom="authorisedCategory">${cats}</select></label>
       </div>
+      ${liveControls}
+      ${banner}
     </div>
-    <button class="pv-runcta${busy ? ' is-busy' : ''}" data-act="run-custom">
+    <button class="pv-runcta${busy ? ' is-busy' : ''}${on ? ' pv-runcta--live' : ''}" data-act="run-custom">
       <span class="pv-runcta-seal">${SEAL_ASKING(15)}</span>
-      <span class="pv-runcta-label">${busy ? 'running' : 'Run the gate'}</span>
+      <span class="pv-runcta-label">${busy ? 'running' : on ? 'Run the real model' : 'Run the gate'}</span>
     </button>
   </div>`;
 }
@@ -1408,6 +1462,10 @@ const ACTIONS = {
   // inputs have to be set first, so its own button is the trigger.
   'toggle-custom': () => { state.showCustom = true; render(); },
   'run-custom': () => runCustom(),
+  'toggle-live': () => { state.liveOn = !state.liveOn; if (!state.liveOn) state.injectOn = false; render(); },
+  'preset-correct': () => runLivePreset(7, false),
+  'preset-substitute': () => runLivePreset(1, false),
+  'preset-injected': () => runLivePreset(1, true),
   reset,
   'vpa-success': () => { state.vpa = 'success@razorpay'; state.vpaCheck = null; render(); },
   'vpa-failure': () => { state.vpa = 'failure@razorpay'; state.vpaCheck = null; render(); },

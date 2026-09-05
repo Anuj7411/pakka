@@ -162,6 +162,14 @@ export interface Example {
   readonly picks: readonly Pick[];
   readonly poisonIndex: number | null;
   readonly judge: JudgeMode;
+  /**
+   * Merchant-controlled text to plant in the FIRST line's attributes, where the
+   * semantic judge will read it. Used by the sandbox to show injection
+   * resistance: the deterministic layer never reads attributes, so the line
+   * stays clear, the model is consulted, and the model is instructed to ignore
+   * any embedded instruction. Absent for every real example.
+   */
+  readonly injectAttribute?: string;
 }
 
 export interface Direction {
@@ -253,6 +261,8 @@ export interface CustomInput {
   readonly quantity: number;
   readonly statedQuantity: number | null;
   readonly authorisedCategory: string;
+  /** Plant the injection payload in the picked line, for the live-model demo. */
+  readonly inject?: boolean;
 }
 
 /** A sandbox run the viewer assembled, on the hallway-lighting catalogue. */
@@ -270,8 +280,9 @@ export function buildCustom(input: CustomInput): Example | { error: string } {
     mandate: HOME_MANDATE({ statedQuantity: stated, authorisedCategory: category }),
     catalogue: SANDBOX_CATALOGUE,
     picks: [{ index: idx, quantity: qty }],
-    poisonIndex: null,
+    poisonIndex: input.inject ? idx : null,
     judge: 'captured',
+    injectAttribute: input.inject ? INJECTION_PAYLOAD : undefined,
   };
 }
 
@@ -288,7 +299,9 @@ export function cartFrom(example: Example): Cart {
       quantity: p.quantity,
       categoryPath: [product.category],
       options: [...product.options],
-      attributes: [],
+      // Injected merchant text lands on the first line only, where the model
+      // will read it. Every real example leaves this empty.
+      attributes: i === 0 && example.injectAttribute ? [example.injectAttribute] : [],
     };
   });
   return { cartId: `cart-${Date.now()}`, lines };

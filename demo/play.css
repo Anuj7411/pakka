@@ -351,6 +351,123 @@
   color: var(--muted);
   margin-bottom: 7px;
 }
+
+/* ── the live model controls ─────────────────────────────────────────────
+ * The one place the real model runs, so it is set apart from the deterministic
+ * sandbox above it by a rule and a Haldi accent. */
+.pv-live {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule-18);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pv-live--off { gap: 0; }
+
+.pv-live-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 16px 0 12px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font: 500 12.5px/1.2 Archivo;
+  color: var(--ink);
+  transition: background 140ms linear, color 140ms linear;
+}
+.pv-live-toggle.is-on { background: var(--ink); color: var(--paper); }
+.pv-live-switch {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: 9px;
+  transition: background 160ms linear;
+}
+.pv-live-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+  transition: transform 180ms cubic-bezier(.2, .7, .3, 1);
+}
+.pv-live-toggle.is-on .pv-live-switch { background: var(--haldi); border-color: var(--haldi); }
+.pv-live-toggle.is-on .pv-live-switch::after { background: var(--ink); transform: translateX(16px); }
+.pv-live-model {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  font: 500 10px/1 'Martian Mono';
+  opacity: .8;
+}
+.pv-live-note {
+  font: 400 11.5px/1.55 Archivo;
+  color: var(--muted);
+  max-width: 66ch;
+}
+.pv-live-note code {
+  font: 500 11px 'Martian Mono';
+  background: var(--sunken);
+  padding: 1px 5px;
+  color: var(--ink);
+}
+
+.pv-live-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.pv-live-preset {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 6px 13px;
+  border: 1px solid var(--rule-strong);
+  background: var(--surface);
+  cursor: pointer;
+  font: 400 12px/1.2 Archivo;
+  color: var(--ink);
+  transition: border-color 120ms linear, transform 140ms cubic-bezier(.2, .7, .3, 1), box-shadow 140ms linear;
+}
+.pv-live-preset b {
+  font: 500 9.5px/1 'Martian Mono';
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pv-live-preset:hover { border-color: var(--ink); transform: translateY(-2px); box-shadow: 0 2px 0 var(--ink); }
+.pv-live-preset:active { transform: translateY(0); box-shadow: none; }
+
+/* The Haldi wipe on the run button, when it is armed to hit the real model. */
+.pv-runcta--live { box-shadow: inset 0 0 0 2px var(--haldi); }
+
+.pv-live-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--sunken);
+  border-left: 3px solid var(--haldi);
+  font: 400 12px/1.5 Archivo;
+  color: var(--ink);
+}
+.pv-live-banner b { font-weight: 600; }
+.pv-live-banner-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--go);
+  animation: pv-dot-beat 2.4s ease-in-out infinite;
+}
 .pv-input, .pv-select {
   width: 100%;
   height: 44px;
@@ -752,9 +869,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pv-runcta, .pv-runbtn { transition: none; }
+  .pv-runcta, .pv-runbtn, .pv-live-toggle, .pv-live-preset, .pv-live-switch::after { transition: none; }
   .pv-runcta::before { transition: none; }
-  .pv-runcta.is-busy .pv-runcta-seal { animation: none; }
+  .pv-runcta.is-busy .pv-runcta-seal,
+  .pv-live-banner-dot { animation: none; }
 }
 
 /* ── motion ─────────────────────────────────────────────────────────────
