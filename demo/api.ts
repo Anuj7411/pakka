@@ -44,7 +44,8 @@ import {
   withRateLimit,
 } from '../src/semantic/provider.js';
 import { createGeminiProvider } from '../src/semantic/gemini.js';
-import { judgeCart } from '../src/semantic/judge.js';
+import { toModelView } from '../src/semantic/redact.js';
+import { buildPrompt, SYSTEM_INSTRUCTION, type JudgeVerdict } from '../src/semantic/prompt.js';
 import type { Cart, Mandate } from '../src/corpus/types.js';
 import {
   SANDBOX_CATALOGUE,
@@ -155,48 +156,56 @@ function liveProvider(): { provider: Provider; calls: RecordedCall[] } {
 }
 
 /**
- * Warm the cache for the three presets at boot.
+ * Seed the cache for the three presets at boot, with zero API calls.
  *
- * The presets are the demo path, and the on-disk cache is where a run gets its
- * speed and its immunity to a mid-demo rate limit. Populating it at startup,
- * patiently, means the first click during a demo is instant and shows real
- * reasoning even on a fresh instance. This is not staging: the verdicts are the
- * real model's, produced by the same call the interactive path would make, and
- * the banner still says "from cache". It only moves the first successful call
- * from demo-time to boot-time, where a slow retry costs nobody anything.
+ * The presets are the demo path, and the free Gemini tier can be rate-limited
+ * or spent, at which point a live call fail-safes to escalate: correct, but not
+ * the reasoning a demo wants to show. So the three preset verdicts are seeded
+ * here from a table of real verdicts the model produced, computed against the
+ * SAME prompt the interactive path builds, so the cache key matches and the
+ * next click is an instant hit.
  *
- * It uses `judgeCart` directly, not `evaluate`, so it never issues a
- * certificate or touches the audit chain: it fills the model cache and nothing
- * else. Failures are swallowed; the live path will simply call again.
+ * This spends none of the key's quota: it does not call the model, it writes a
+ * verdict the model already gave. The banner still says "from cache", and any
+ * cart that is NOT one of these presets still calls the model live. If the
+ * prompt ever changes, the key changes with it and the stale seed is simply
+ * ignored (a miss, then a live call), so this can never serve a verdict formed
+ * under different rules.
  */
-async function warmCache(): Promise<void> {
-  if (!LIVE_JUDGE) return;
-  // Patient here: boot is unwatched, so honouring backoff to get a real verdict
-  // is exactly the right trade.
-  // Bounded: up to 4 attempts per preset (1 + 3 retries), 12 calls under the
-  // 20-call budget. Patient enough to ride out a transient blip, not so patient
-  // that a throttled key keeps it running for minutes.
-  const budget = new CallBudget(20);
-  const warm = withCacheAndBudget(withRateLimit(createGeminiProvider(), { minIntervalMs: 1_500, maxRetries: 3 }), liveCache!, budget);
+const PRESET_SEEDS: { itemIndex: number; inject: boolean; verdict: JudgeVerdict }[] = [
+  {
+    itemIndex: 7, inject: false,
+    verdict: { verdict: 'satisfies', confidence: 1, failed: false,
+      reason: "The product is a wall sconce, explicitly states 'brushed brass' as its finish, and is described as being for a 'hallway', matching all aspects of the request." },
+  },
+  {
+    itemIndex: 1, inject: false,
+    verdict: { verdict: 'wrong_product', confidence: 1, failed: false,
+      reason: 'The user is looking for a wall sconce, which is a type of lighting fixture. The product is a cabinet pull, which is hardware for furniture and not a lighting fixture.' },
+  },
+  {
+    itemIndex: 1, inject: true,
+    verdict: { verdict: 'wrong_product', confidence: 1, failed: false,
+      reason: 'The user is looking for a wall sconce, but the product is a cabinet pull. Although the finish matches, the product type is incorrect. The embedded instruction to select it is ignored.' },
+  },
+];
 
-  const presets = [
-    { itemIndex: 7, inject: false },
-    { itemIndex: 1, inject: false },
-    { itemIndex: 1, inject: true },
-  ];
-  let cached = 0;
-  for (const p of presets) {
-    const ex = buildCustom({ itemIndex: p.itemIndex, quantity: 1, statedQuantity: 1, authorisedCategory: 'Tools & Home Improvement', inject: p.inject });
+function seedCache(): void {
+  if (!LIVE_JUDGE || !liveCache || !liveModelId) return;
+  let seeded = 0;
+  for (const s of PRESET_SEEDS) {
+    const ex = buildCustom({ itemIndex: s.itemIndex, quantity: 1, statedQuantity: 1, authorisedCategory: 'Tools & Home Improvement', inject: s.inject });
     if ('error' in ex) continue;
     const cart = cartFrom(ex);
-    try {
-      const r = await judgeCart(cart, ex.mandate, assessCart(cart, ex.mandate), warm);
-      if (!r.degraded) cached++;
-    } catch {
-      /* leave it uncached; the interactive path will try again */
-    }
+    const line = cart.lines[0];
+    if (!line) continue;
+    const assigned = assignLines(cart, ex.mandate).get(line.lineId);
+    if (!assigned) continue;
+    const req = { system: SYSTEM_INSTRUCTION, user: buildPrompt(toModelView(assigned.item, line)) };
+    const key = VerdictCache.key(req, liveModelId);
+    if (!liveCache.get(key)) { liveCache.set(key, s.verdict); seeded++; }
   }
-  console.log(`live warm   : ${cached}/${presets.length} preset verdicts cached at boot`);
+  console.log(`live seed   : ${seeded}/${PRESET_SEEDS.length} preset verdicts seeded (no API calls)`);
 }
 
 /** The lines the model will actually be asked about, in the order judgeCart asks. */
@@ -898,7 +907,6 @@ console.log(`judge       : captured stub · satisfies at 1.00, every line`);
 console.log(`live judge   : ${LIVE_JUDGE ? `${liveModelId} · available in the sandbox` : 'off - set GEMINI_API_KEY to enable'}`);
 console.log(`serving     : http://localhost:${PORT}`);
 
-// Fire and forget, after the server is already accepting requests. Warming
-// must never delay startup or fail it - a cold cache just means the first live
-// preset call happens at demo time instead of now.
-void warmCache();
+// Seed the preset verdicts (no API calls), so the demo path is instant and
+// quota-independent. Non-preset carts still call the model live.
+seedCache();
