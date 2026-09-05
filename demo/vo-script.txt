@@ -1,0 +1,91 @@
+PAKKA - PITCH VIDEO / VOICEOVER SCRIPT  (v4: Hinglish, cue-driven)
+Razorpay AI Buildathon 2026, Track 01 (AI Growth & Agentic Commerce)
+
+VOICE: hi-IN-MadhurNeural. Hindi is written in Devanagari so the voice speaks it
+natively. Roughly 10% of the words are Hindi, concentrated where it adds warmth:
+the Pakka explanation, the punch at the end of a beat, and the final line.
+
+Every visual cue in the video is timed to the WORDS in this script, not to a
+stopwatch. See cues.json for the word each zoom, highlight and marker fires on.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+[1 | THE PROBLEM]
+
+Okay, imagine you tell your AI shopping agent: get me one bag of coffee, medium
+roast, under fifteen hundred rupees. And it comes back with the dark roast.
+Wrong coffee. But the payment still went through. Your spending limit was fine
+with it. Fraud check, fine. Your bank, fine. Because not one of them read what
+you actually asked for. किसी ने आपकी बात पढ़ी ही नहीं।
+
+[2 | WHAT PAKKA MEANS]
+
+We call this Pakka. पक्का एक हिंदी शब्द है। मतलब, ठोस। भरोसेमंद। सही तरीके से किया हुआ।
+जब आप किसी दोस्त से पूछते हो, पक्का? और वो कहता है, पक्का। तो बात कन्फर्म है। And that
+is the whole idea here. Before any money moves, someone should look at that cart
+and say: this is pakka. This is actually what you asked for. अभी ये कोई नहीं करता।
+
+[3 | WHY NOTHING CATCHES IT]
+
+Look at what payment security checks today. How much you spent. What category.
+Is the card stolen. All money questions. But an AI agent doesn't mess up by
+overspending. It messes up by buying the wrong thing, at the right price.
+इसको कोई चेक नहीं करता। So we built the thing that does.
+
+[4 | IT WORKING]
+
+Here it is running. On one side, what the human asked for, locked in and signed
+so it can't be quietly changed. On the other, what the agent put in the shopping
+cart. Pakka compares the two before the payment happens. Here's an honest agent:
+right coffee, medium roast, inside budget. Everything passes, you get allow. And
+only now does checkout open.
+
+[5 | IT CATCHING A MISTAKE]
+
+Now the interesting one. Same request, but the agent grabs the dark roast. Pakka
+doesn't just throw an error. It tells you which item, and which rule broke.
+Look: you asked for medium, this one is dark. साफ़ पकड़ लिया। It's not a
+confidence score you have to trust. And there are three answers: allow,
+escalate, block. The worst one always wins.
+
+[6 | THE MONEY]
+
+When a cart does pass, Pakka also decides how much money the agent is allowed to
+hold. And it's capped. There's an N P C I rule for this, O-C two-twenty-eight,
+and we follow it. Never unlimited. Also, the part that suggests that number
+isn't the part that approves it. So the thing that wants to spend can never be
+the thing that says yes.
+
+[7 | THE PROOF]
+
+And every decision gets signed. Pakka takes the cart, the verdict and the
+amount, signs it, then links it to the one before with a hash. Edit an old
+decision and the chain visibly breaks. It's not a log you have to trust me on.
+You can check it yourself. If there's ever a fight about why the agent bought
+something, there's a signed answer.
+
+[8 | CHECKOUT]
+
+And this is real, not a mockup. It runs on actual Razorpay orders, in test mode.
+If the gate blocks a cart, no order gets created. There's literally no pay
+button. If someone fakes a payment signature, the server rejects it. And since
+it's test mode, the page tells you what to type: any phone number, any OTP, a
+test card.
+
+[9 | THE NUMBERS]
+
+So does it actually work? We tested the whole set. Eight hundred plus shopping
+carts, five kinds of mistakes, three difficulty levels, with error bars, not one
+lucky screenshot. Plain code catches ninety-two percent of the bad carts, with
+zero false positives. It never blocks a good cart. एक भी सही कार्ट नहीं रोका।
+Near perfect on four of the five mistakes. And we're honest about the fifth:
+when the swap is the right price, right size, right category, just not the thing
+you meant, code alone can't see it.
+
+[10 | THE ONE RULE]
+
+And that's where the AI model comes in. This is the decision I'm proudest of:
+the model is only allowed to raise a flag. It can pause a payment for a human.
+It can never approve one, and it can never unblock one. The smartest, least
+predictable part of the system is the one part we refused to let touch your
+money. यही है पक्का।

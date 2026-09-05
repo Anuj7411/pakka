@@ -6,6 +6,10 @@
 
 **A shopping agent bought the wrong thing. Who proves it?**
 
+## 🔴 Live now: **[pakka-l78z.onrender.com](https://pakka-l78z.onrender.com)**
+
+*Running on real Razorpay test-mode orders. No install, no signup, just open it.*
+
 [![live demo](https://img.shields.io/badge/live_demo-launch-E8C400?style=for-the-badge&labelColor=0E100C)](https://pakka-l78z.onrender.com)
 [![CI](https://img.shields.io/github/actions/workflow/status/Anuj7411/pakka/ci.yml?branch=main&style=for-the-badge&label=CI&labelColor=0E100C&color=17734A)](https://github.com/Anuj7411/pakka/actions/workflows/ci.yml)
 [![tests](https://img.shields.io/badge/tests-556_passing-17734A?style=for-the-badge&labelColor=0E100C)](docs/TESTING.md)
