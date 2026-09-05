@@ -1094,3 +1094,15 @@
 .pv-runcta:focus-visible,
 .pv-nav-right a:focus-visible { outline-color: var(--paper); outline-offset: 3px; }
 
+
+/* Playground empty state: the 1a plate, framed and centred, shown when no run
+ * is on screen. It vacates the instant a run fills the well. */
+.pv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 52px 20px 72px;
+}
+.pv-empty .dev-plate { width: min(440px, 86vw); height: auto; }
+.pv-empty-note { margin: 0; font: 400 14px/1.55 Archivo; color: var(--muted); text-align: center; }

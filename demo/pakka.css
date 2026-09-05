@@ -1181,7 +1181,10 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
        porting checklist says touch targets are never below 44px. */
     min-height: 44px;
   }
-  .pk-brandtext { display: none !important; }
+  /* On a phone the navbar's right side is the wide thing; drop the Devanagari
+     half of the lockup so PAKKA and the links keep their room. The mark returns
+     from the tablet breakpoint up. */
+  .pk-brand .dev-1d, .pk-brand .dev-rule { display: none !important; }
   .pk-btn {
     white-space: normal !important;
     text-align: left;
@@ -1258,4 +1261,75 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root),
   ::view-transition-new(root) { animation: none; }
+}
+
+/* ── Devanagari wordmark पक्का ─────────────────────────────────────────────
+ * 1d, the flat identity mark (Rozha One), in chrome / the receipt / the stamp.
+ * 1a, the plate (Yatra One on a Haldi field with chevron bands), used once per
+ * surface where nothing is being decided. Every Devanagari run carries its own
+ * font-family; none is ever letter-spaced (it splits the conjunct क्क). */
+
+.dev-1d, .dev-plate, .dev-letters, .dev-band-letters { display: block; }
+.dev-1d { flex: none; }
+
+/* the lockup hairline: PAKKA and पक्का read as one name twice, not two brands.
+ * Paper-toned on the Ink navbars, Ink-toned on the Paper (argument) chrome. */
+.dev-rule {
+  width: 1px;
+  height: 20px;
+  flex: none;
+  align-self: center;
+  background: rgba(245, 242, 233, .32);
+}
+.pk-nav .dev-rule { background: rgba(14, 16, 12, .22); }
+
+/* order-summary head: flat Ink, above the total separator, no Haldi in panel */
+.ck-sum-brand { margin-bottom: 7px; }
+
+/* signed decision stamp: flat, tilted, over the certificate hash. Ink on the
+ * light stamps, Paper on the Ink block stamp (the mark stays legible either
+ * way, and it is never Haldi, so it is not a status signal). */
+.ck-stamp-sign {
+  display: block;
+  margin-bottom: 5px;
+  transform: rotate(-3deg);
+  transform-origin: right center;
+}
+.ck-stamp-sign .dev-1d { margin-left: auto; }
+
+/* paid confirmation plate: framed, never full-bleed. Safe only here, where the
+ * money has moved and no verdict can be misread from the Haldi. */
+.ck-paid-plate { margin: 0 0 18px; }
+.ck-paid-plate .dev-plate { width: min(380px, 100%); height: auto; }
+
+/* section opener band (1a): full-bleed, once per page. Haldi field, chevron
+ * bands top and bottom, the letters centred. */
+.dev-band {
+  position: relative;
+  width: 100%;
+  background: var(--pk-accent);
+  padding: 48px 24px;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+.dev-band::before, .dev-band::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='18'%3E%3Crect width='26' height='18' fill='%230E100C'/%3E%3Cpath d='M0 18 L13 0 L26 18 Z' fill='%23F5F2E9'/%3E%3C/svg%3E");
+  background-size: 26px 18px;
+  background-repeat: repeat-x;
+}
+.dev-band::before { top: 0; }
+.dev-band::after { bottom: 0; transform: scaleY(-1); }
+.dev-band-letters { width: min(300px, 62vw); height: auto; }
+
+/* The Ink navbars (playground, checkout) also drop the Devanagari half of the
+   lockup on a phone, matching the argument nav. */
+@media (max-width: 640px) {
+  .pv-nav-left .dev-1d, .pv-nav-left .dev-rule,
+  .ck-nav-left .dev-1d, .ck-nav-left .dev-rule { display: none; }
 }

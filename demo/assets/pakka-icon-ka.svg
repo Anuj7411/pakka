@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="पक्का">
+  <!-- App-icon crop: क alone (the letter the conjunct doubles), Paper on Ink,
+       echoing the Haldi seal's silhouette. NOTE: a browser renders favicons in
+       isolation and will NOT load the Rozha One webfont, so for a real tab icon
+       this glyph must be replaced by an outlined path. Live text here is the
+       source of record. -->
+  <rect width="512" height="512" fill="#0E100C"></rect>
+  <text x="256" y="392" text-anchor="middle" font-family="'Rozha One', serif" font-size="470" fill="#F5F2E9">क</text>
+</svg>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Pakka - the cart is checked before the money moves">
+  <!-- Link-preview / OG card (1a plate band on Ink). Live text is the source of
+       record; a crawler will not load the webfonts, so ship a PNG raster of this
+       for real link previews. -->
+  <defs><pattern id="og-chev" width="26" height="18" patternUnits="userSpaceOnUse">
+    <rect width="26" height="18" fill="#0E100C"></rect><path d="M0 18 L13 0 L26 18 Z" fill="#F5F2E9"></path>
+  </pattern></defs>
+  <rect width="1200" height="630" fill="#0E100C"></rect>
+  <!-- the plate band -->
+  <rect y="40" width="1200" height="230" fill="#E8C400"></rect>
+  <rect y="40" width="1200" height="14" fill="url(#og-chev)"></rect>
+  <rect y="256" width="1200" height="14" fill="url(#og-chev)"></rect>
+  <text x="600" y="196" text-anchor="middle" font-family="'Yatra One', cursive" font-size="128" fill="#0E100C" opacity="0.26" transform="translate(8,9)">पक्का</text>
+  <text x="600" y="196" text-anchor="middle" font-family="'Yatra One', cursive" font-size="128" fill="#0E100C" stroke="#0E100C" stroke-width="28" paint-order="stroke" stroke-linejoin="round">पक्का</text>
+  <text x="600" y="196" text-anchor="middle" font-family="'Yatra One', cursive" font-size="128" fill="#0E100C" stroke="#F5F2E9" stroke-width="15" paint-order="stroke" stroke-linejoin="round">पक्का</text>
+  <!-- tagline -->
+  <text x="600" y="400" text-anchor="middle" font-family="Archivo, sans-serif" font-weight="600" font-size="58" fill="#F5F2E9">The cart is checked before the money moves.</text>
+  <text x="600" y="470" text-anchor="middle" font-family="'Anek Devanagari', sans-serif" font-weight="600" font-size="34" fill="#E8C400">पक्का</text>
+  <text x="600" y="556" text-anchor="middle" font-family="'Martian Mono', monospace" font-size="24" letter-spacing="3" fill="rgba(245,242,233,0.6)">PAKKA · PRE-AUTHORISATION CONFORMANCE</text>
+</svg>

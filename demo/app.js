@@ -598,6 +598,76 @@ const STATE_SEAL = (running) =>
   `<svg width="40" height="40" viewBox="0 0 32 32" aria-hidden="true"><path d="M0 0H22L32 10V32H0Z" fill="${running ? '#E8C400' : 'none'}" stroke="#0E100C" stroke-width="1.4"></path>` +
   '<g transform="translate(-0.6,0.6)" stroke="#0E100C" stroke-width="3" fill="none" stroke-linejoin="miter"><path d="M25 8L17 16L25 24"></path></g></svg>';
 
+/* ── Devanagari wordmark पक्का ────────────────────────────────────────────
+ * Two approved marks, not interchangeable. 1d is the identity mark (Rozha One):
+ * flat, high-contrast, used wherever the product signs its own name - chrome,
+ * the receipt, the certificate stamp, the icon. 1a is the plate (Yatra One on a
+ * Haldi field with chevron bands): a poster used once per surface, only where
+ * nothing is being decided. Live webfont text, no image assets.
+ *
+ * Pitfalls asserted against: never letter-space a Devanagari run (it splits the
+ * conjunct क्क); every run carries an explicit font-family (Archivo and Martian
+ * Mono have no Devanagari coverage); the Haldi drop on 1d exists only above
+ * 60px, so every in-product 1d instance here is flat.
+ */
+
+/** 1d, the identity mark. Flat. `fill` is Paper on Ink chrome, Ink on paper. */
+const DEV_1D = (px, fill) =>
+  `<svg viewBox="0 0 118 40" height="${px}" role="img" aria-label="पक्का" class="dev-1d">` +
+  `<text x="59" y="31" text-anchor="middle" font-family="'Rozha One', serif" font-size="31" fill="${fill}">पक्का</text></svg>`;
+
+/** App-icon crop: क alone (the letter the conjunct doubles), Paper on Ink. */
+const DEV_ICON_KA = (px) =>
+  `<svg viewBox="0 0 32 32" width="${px}" height="${px}" role="img" aria-label="पक्का">` +
+  `<rect width="32" height="32" fill="#0E100C"></rect>` +
+  `<text x="16" y="25.5" text-anchor="middle" font-family="'Rozha One', serif" font-size="31" fill="#F5F2E9">क</text></svg>`;
+
+/** The 1a letters alone: three passes over the Yatra run, Ink keyline then Paper
+ *  halo, painted outside-in. Transparent, to drop onto any Haldi field. */
+const DEV_LETTERS = (fontSize) => {
+  const ink = (fontSize * 0.22).toFixed(1);
+  const paper = (fontSize * 0.12).toFixed(1);
+  const dropX = (fontSize * 0.06).toFixed(1);
+  const dropY = (fontSize * 0.07).toFixed(1);
+  const w = Math.round(fontSize * 5.3);
+  const h = Math.round(fontSize * 2.03);
+  const cx = Math.round(w / 2);
+  const base = Math.round(h * 0.645);
+  const t = (extra) =>
+    `<text x="${cx}" y="${base}" text-anchor="middle" font-family="'Yatra One', cursive" font-size="${fontSize}" ${extra}>पक्का</text>`;
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="पक्का" class="dev-letters">` +
+    t(`fill="#0E100C" opacity="0.26" transform="translate(${dropX},${dropY})"`) +
+    t(`fill="#0E100C" stroke="#0E100C" stroke-width="${ink}" paint-order="stroke" stroke-linejoin="round"`) +
+    t(`fill="#0E100C" stroke="#F5F2E9" stroke-width="${paper}" paint-order="stroke" stroke-linejoin="round"`) +
+    `</svg>`;
+};
+
+/** 1a, the framed plate: Haldi field, chevron bands, Ink keyline, the letters.
+ *  For framed slots (paid confirmation, link preview). Never near a verdict. */
+const DEV_PLATE = ({ w = 616, caption = '' } = {}) => {
+  const cap = caption
+    ? `<text x="308" y="196" text-anchor="middle" font-family="'Anek Devanagari', sans-serif" font-weight="600" font-size="15" letter-spacing="0" fill="#0E100C">${esc(caption)}</text>`
+    : '';
+  return `<svg viewBox="0 0 616 236" width="${w}" role="img" aria-label="पक्का" class="dev-plate">
+    <defs><pattern id="dev-chev" width="26" height="18" patternUnits="userSpaceOnUse">
+      <rect width="26" height="18" fill="#0E100C"></rect><path d="M0 18 L13 0 L26 18 Z" fill="#F5F2E9"></path>
+    </pattern></defs>
+    <rect width="616" height="236" fill="#E8C400"></rect>
+    <rect width="616" height="14" fill="url(#dev-chev)"></rect>
+    <rect y="222" width="616" height="14" fill="url(#dev-chev)"></rect>
+    <rect x="14" y="26" width="588" height="184" fill="none" stroke="#0E100C" stroke-width="2"></rect>
+    <text x="308" y="152" text-anchor="middle" font-family="'Yatra One', cursive" font-size="116" fill="#0E100C" opacity="0.26" transform="translate(7,8)">पक्का</text>
+    <text x="308" y="152" text-anchor="middle" font-family="'Yatra One', cursive" font-size="116" fill="#0E100C" stroke="#0E100C" stroke-width="26" paint-order="stroke" stroke-linejoin="round">पक्का</text>
+    <text x="308" y="152" text-anchor="middle" font-family="'Yatra One', cursive" font-size="116" fill="#0E100C" stroke="#F5F2E9" stroke-width="14" paint-order="stroke" stroke-linejoin="round">पक्का</text>
+    ${cap}
+  </svg>`;
+};
+
+/** The lockup tail: a hairline, then the flat 1d, so PAKKA and पक्का read as one
+ *  name twice rather than two brands. Paper tone for the Ink navbars. */
+const DEV_LOCKUP = (fill = '#F5F2E9') =>
+  `<span class="dev-rule" aria-hidden="true"></span>${DEV_1D(24, fill)}`;
+
 const BOUND_KEY = {
   'authorised category': 'category',
   'stated quantity': 'quantity',
@@ -613,7 +683,7 @@ function pvNavbar() {
   const policy = state.run ? state.run.policyShort : (meta ? '-' : '-');
   return `<div class="pv-nav">
     <div class="pv-nav-left">
-      <a href="/" data-view="argument" aria-label="Pakka home" style="display:flex;align-items:center;gap:13px;min-height:44px">${NAV_SEAL}${NAV_WORDMARK}</a>
+      <a href="/" data-view="argument" aria-label="Pakka home" style="display:flex;align-items:center;gap:11px;min-height:44px">${NAV_SEAL}${NAV_WORDMARK}${DEV_LOCKUP()}</a>
       <span class="pv-nav-chip">playground</span>
     </div>
     <div class="pv-nav-right">
@@ -678,6 +748,14 @@ function pvTabs() {
       <span class="pv-tab-title">Sandbox</span>
       <span class="pv-tab-verdict pv-tab-verdict--any">your call</span>
     </button>
+  </div>`;
+}
+
+/** The playground empty state: the 1a plate, framed, shown when no run is up. */
+function pvEmptyState() {
+  return `<div class="pv-empty">
+    ${DEV_PLATE({ w: 440 })}
+    <p class="pv-empty-note">No run yet. Pick a direction above and press Run, or open the Sandbox.</p>
   </div>`;
 }
 
@@ -1029,18 +1107,19 @@ function renderPlay() {
     : false;
 
   const enter = entered.play ? '' : ' is-enter';
+  // The one moment the playground has no verdict on screen: no run, not the
+  // sandbox, not mid-flight. The 1a plate is safe here because nothing is being
+  // decided, and it vacates the instant a run fills the well.
+  const noRun = !state.run && !state.running && !state.showCustom;
+  const body = noRun
+    ? pvEmptyState()
+    : `${pvInstruction()}${pvShelf()}${pvCart()}${pvVerdict()}${failure}${pvChecks()}${pvCertChain()}`;
   $('#view-play').innerHTML =
     `<div class="pv-play${enter}">
       ${pvNavbar()}
       ${pvTabs()}
       ${pvRunPanel()}
-      ${pvInstruction()}
-      ${pvShelf()}
-      ${pvCart()}
-      ${pvVerdict()}
-      ${failure}
-      ${pvChecks()}
-      ${pvCertChain()}
+      ${body}
     </div>`;
   // The strip scrolls sideways on a phone, so the selected tab has to be
   // brought into view or the panel below would be describing a tab you cannot
@@ -1083,7 +1162,7 @@ const CK_SEAL = (fill, ink) =>
 function ckNav() {
   return `<div class="ck-nav">
     <div class="ck-nav-left">
-      <a href="/" data-view="argument" aria-label="Pakka home" style="display:flex;align-items:center;gap:13px;min-height:44px">${NAV_SEAL}${NAV_WORDMARK}</a>
+      <a href="/" data-view="argument" aria-label="Pakka home" style="display:flex;align-items:center;gap:11px;min-height:44px">${NAV_SEAL}${NAV_WORDMARK}${DEV_LOCKUP()}</a>
       <span class="ck-nav-chip">checkout</span>
     </div>
     <div class="ck-nav-right">
@@ -1136,7 +1215,7 @@ function ckStamp(dec, r) {
         </div>
         <p class="ck-stamp-line">${esc(line)}</p>
       </div>
-      <div class="ck-stamp-hashes">certificate <b>${esc(r.certShort)}</b><br>cart hash <b>${esc(r.cartHashShort)}</b></div>
+      <div class="ck-stamp-hashes"><span class="ck-stamp-sign">${DEV_1D(26, dec === 'block' ? '#F5F2E9' : '#0E100C')}</span>certificate <b>${esc(r.certShort)}</b><br>cart hash <b>${esc(r.cartHashShort)}</b></div>
     </div>
   </div>`;
 }
@@ -1258,6 +1337,7 @@ function ckOutcome(r) {
     ['cart hash re-check', o && o.recheck.ok ? 'match' : 'MISMATCH', o && o.recheck.ok ? 'is-good' : 'is-bad'],
   ];
   return `<div class="ck-panel ck-out--captured">
+    <div class="ck-paid-plate">${DEV_PLATE({ w: 380 })}</div>
     <div class="ck-out-head"><span class="ck-out-word">payment captured</span><span class="ck-out-code">upi · intent</span></div>
     <div class="ck-fields">${fields.map(([k, v, cls], i) => `<div class="ck-field" style="--i:${i}"><div class="ck-field-k">${esc(k)}</div><div class="ck-field-v ${cls}">${esc(v)}</div></div>`).join('')}</div>
     <p class="ck-out-prose">The cart hash was re-derived at authorisation and matched the one inside the certificate. Had the cart moved between the gate and the order, this payment would have been refused.</p>
@@ -1281,6 +1361,7 @@ function ckRail(dec, r) {
   ];
   return `<div class="ck-rail">
     <div class="ck-card">
+      <div class="ck-sum-brand">${DEV_1D(19, '#0E100C')}</div>
       <div class="ck-sum-head"><b>Order summary</b><span>${r.cart.length} line · ${units} unit${units === 1 ? '' : 's'}</span></div>
       ${r.cart.map((l, i) => `<div class="ck-sum-line" style="--i:${i}">
         <div class="ck-sum-line-name">${esc(l.name)}</div>

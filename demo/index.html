@@ -9,10 +9,19 @@
       content="Pre-authorisation conformance gate for agent-made purchases. Checks an agent's cart against the human instruction that authorised it, refuses to let the model approve anything, and signs the answer."
     />
     <link rel="icon" href="/assets/pakka-favicon-16.svg" type="image/svg+xml" />
+    <!-- Link preview (slot 8, the 1a plate). The card is live SVG text; crawlers
+         do not load webfonts, so for production ship a PNG raster of pakka-og.svg
+         and point these at it. -->
+    <meta property="og:title" content="Pakka - did it buy the right thing?" />
+    <meta property="og:description" content="Pre-authorisation conformance gate for AI shopping agents. Checks an agent's cart against the human instruction, refuses to let the model approve, and signs the answer." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://pakka-l78z.onrender.com/assets/pakka-og.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://pakka-l78z.onrender.com/assets/pakka-og.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&family=Anek+Devanagari:wght@400;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&family=Anek+Devanagari:wght@400;600&family=Rozha+One&family=Yatra+One&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/pakka.css" />
@@ -45,7 +54,13 @@
             <path d="M103.7 32L111.7 2.3H118.7L126.7 32"></path>
             <path d="M107.2 22.5H123.2"></path>
           </svg>
-          <span class="pk-brandtext">पक्का</span>
+          <!-- Navbar lockup: the identity mark (1d, Rozha One) after a hairline,
+               so PAKKA and पक्का read as one name twice. Ink on the Paper chrome,
+               flat (the Haldi drop is licensed only above 60px). -->
+          <span class="dev-rule" aria-hidden="true"></span>
+          <svg viewBox="0 0 118 40" height="24" role="img" aria-label="पक्का" class="dev-1d">
+            <text x="59" y="31" text-anchor="middle" font-family="'Rozha One', serif" font-size="31" fill="#0E100C">पक्का</text>
+          </svg>
         </div>
         <div class="pk-navlinks">
           <button data-view="argument">The argument</button>
@@ -261,6 +276,17 @@
           <div class="pk-testline">
             556 tests at HEAD · 538 in the run that produced 98.8% coverage · mutation tested as a finding tool
           </div>
+        </div>
+
+        <!-- Section opener band (1a, the plate): full-bleed, once per page,
+             between two sections, where nothing is being decided. The loud
+             Haldi plate is safe here because no verdict sits beside it. -->
+        <div class="dev-band" role="img" aria-label="पक्का">
+          <svg class="dev-band-letters" viewBox="0 0 616 176" width="300" aria-hidden="true">
+            <text x="308" y="128" text-anchor="middle" font-family="'Yatra One', cursive" font-size="116" fill="#0E100C" opacity="0.26" transform="translate(7,8)">पक्का</text>
+            <text x="308" y="128" text-anchor="middle" font-family="'Yatra One', cursive" font-size="116" fill="#0E100C" stroke="#0E100C" stroke-width="26" paint-order="stroke" stroke-linejoin="round">पक्का</text>
+            <text x="308" y="128" text-anchor="middle" font-family="'Yatra One', cursive" font-size="116" fill="#0E100C" stroke="#F5F2E9" stroke-width="14" paint-order="stroke" stroke-linejoin="round">पक्का</text>
+          </svg>
         </div>
 
         <!-- 05 · start / 06 · what is incomplete -->
