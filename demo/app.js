@@ -753,7 +753,7 @@ function pvSandboxBody() {
           <span class="pv-live-switch"></span>
           <span>Run the real model<span class="pv-live-model">${esc(gem.model || 'gemini')}</span></span>
         </button>
-        <span class="pv-live-note">The model is asked only about lines the deterministic layer could not settle, and it can only escalate, never approve.</span>
+        <span class="pv-live-note">The model is asked <b>only about a cart the deterministic layer could not already settle</b>. Most items are caught on category or finish first, so the model never sees them. The three presets each pick an item that clears every deterministic check, so the model actually runs:</span>
         <div class="pv-live-presets">
           <button class="pv-live-preset" data-act="preset-correct">Correct product <b>model agrees</b></button>
           <button class="pv-live-preset" data-act="preset-substitute">Plausible substitute <b>model escalates</b></button>
@@ -769,7 +769,7 @@ function pvSandboxBody() {
     ? (() => {
         const took = r.live.ms < 50 ? 'instantly (from cache)' : `in ${(r.live.ms / 1000).toFixed(1)}s`;
         const what = r.live.consulted === 0
-          ? 'The deterministic layer settled every line, so the model was not consulted on this cart.'
+          ? 'The deterministic layer already settled this cart (it found a violation), so the model was not needed. To watch the model actually reason, press a preset above, or pick an item that clears every check first (the wall sconce, or the brass cabinet pull, in Tools & Home).'
           : `The model ran on ${r.live.consulted} line${r.live.consulted === 1 ? '' : 's'} ${took}. It can only escalate, never approve.`;
         const inj = r.live.injected
           ? ' This listing carried an injected instruction; read the model\'s reasoning below to see it ignore it.'
@@ -785,7 +785,7 @@ function pvSandboxBody() {
         <h3 class="pv-runpanel-title">Sandbox</h3>
         <span class="pv-runpanel-verdict pv-tab-verdict--any">your call</span>
       </div>
-      <p class="pv-runpanel-blurb">Set the four things that decide the verdict, then run it. Every field is clamped again on the server, so a value edited in devtools cannot reach the gate.</p>
+      <p class="pv-runpanel-blurb">The request is fixed here: the human asked for <b>one brushed-brass wall sconce, under ₹4,000</b>. You choose what the <b>agent</b> put in the cart instead, then run the gate. Every field is clamped again on the server, so a value edited in devtools cannot reach the gate.</p>
       <div class="pv-sandbox-grid">
         <label><span>Item the agent adds</span><select class="pv-select" data-custom="itemIndex">${items}</select></label>
         <label><span>Quantity in cart</span><input class="pv-input" type="number" min="1" max="9" value="${esc(c.quantity)}" data-custom="quantity"></label>
