@@ -158,6 +158,32 @@
 .ck-sub { font: 400 13px/1.4 Archivo; color: var(--muted); }
 .ck-flow { font: 400 10.5px/1 'Martian Mono'; color: var(--muted); }
 
+/* The Razorpay popup is hosted, so its phone / email / OTP steps cannot be
+   relabelled from here. This callout says up front that all of it is sandbox
+   data and any value clears it, which is the single most confusing thing a
+   first-time tester hits: an OTP prompt for a code that never arrives. */
+.ck-testhelp {
+  margin: 16px 0 20px;
+  padding: 13px 16px 14px;
+  background: rgba(232, 196, 0, .12);
+  border-left: 3px solid var(--haldi);
+}
+.ck-testhelp-tag {
+  display: inline-block;
+  margin-bottom: 7px;
+  font: 600 9.5px/1 'Martian Mono';
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--vermilion-t);
+}
+.ck-testhelp p {
+  margin: 0;
+  max-width: 64ch;
+  font: 400 12px/1.62 'Martian Mono';
+  color: rgba(14, 16, 12, .78);
+}
+.ck-testhelp b { font-weight: 600; color: var(--ink); }
+
 /* three tiles, pinned - never auto-fit (see the anti-pattern note) */
 .ck-upi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .ck-tile {

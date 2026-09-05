@@ -1044,6 +1044,40 @@ function pvChecks() {
   </div>`;
 }
 
+/** The panel below the certificate: names the next step so a first-time reader
+ *  is never left wondering what to do after the gate rules, and fills the space
+ *  the short certificate leaves beside the taller chain. Verdict-aware, because
+ *  "checkout" means three different things across allow, escalate and block. */
+function pvNextStep(dec) {
+  const copy = {
+    allow: {
+      word: 'cleared',
+      line: 'The gate signed this cart. Carry the certificate to checkout and pay against it.',
+      cta: 'Continue to checkout',
+    },
+    escalate: {
+      word: 'escalated',
+      line: 'A human approves before any money moves. Take this cart to checkout to review it.',
+      cta: 'Continue to checkout',
+    },
+    block: {
+      word: 'blocked',
+      line: 'Nothing to pay here, and the block holds all the way to the till. See it at checkout.',
+      cta: 'See it at checkout',
+    },
+  };
+  const c = copy[dec] || copy.block;
+  return `<div class="pv-next" data-dec="${esc(dec)}">
+    <div class="pv-next-eyebrow"><span class="pv-next-tick"></span>${esc(c.word)} · next step</div>
+    <p class="pv-next-line">${esc(c.line)}</p>
+    <a class="pv-runcta pv-nextcta" href="/checkout" data-view="checkout">
+      <span class="pv-runcta-seal">${SEAL_ASKING(15)}</span>
+      <span class="pv-runcta-label">${esc(c.cta)}</span>
+      <span class="pv-nextcta-arrow" aria-hidden="true">›</span>
+    </a>
+  </div>`;
+}
+
 function pvCertChain() {
   const r = state.run;
   const chain = state.chain;
@@ -1066,9 +1100,10 @@ function pvCertChain() {
   const stateNote = running ? 'running the real gate · deterministic checkers, judge, lattice join, Ed25519' : 'the seal holds still - a state, not a spinner';
 
   return `<div class="pv-panel pv-panel--last pv-certzone">
-    <div>
+    <div class="pv-certcol">
       <div class="pv-head" style="margin-bottom:16px"><span class="pv-ordinal">06 &nbsp;the certificate</span><span class="pv-sub--mono" style="color:var(--muted)">Ed25519</span></div>
       ${cert}
+      ${r ? pvNextStep(r.decision) : ''}
     </div>
     <div class="pv-chain">
       <div class="pv-chain-head">
@@ -1265,6 +1300,10 @@ function ckPaymentPanel() {
         <span class="ck-sub">open your app and approve, nothing leaves this page</span>
       </div>
       <span class="ck-flow">intent flow</span>
+    </div>
+    <div class="ck-testhelp">
+      <span class="ck-testhelp-tag">test mode · use any values</span>
+      <p>The Razorpay popup runs on sandbox data. Enter any phone number and email, pick any UPI app or use the <b>success@razorpay</b> shortcut below, and when it asks for an OTP just type any digits - no code is sent to your phone and no money moves. Cards and netbanking accept any test detail the same way.</p>
     </div>
     <div class="ck-upi">${tiles}</div>
     <div class="ck-or"><span></span><span class="ck-or-text">or pay by any UPI app</span><span></span></div>
