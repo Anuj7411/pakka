@@ -1,22 +1,26 @@
 # Render blueprint. Connect the repo and Render reads this.
 #
-# Secrets are NOT in here — sync:false means Render prompts for each one and
+# Secrets are NOT in here. sync:false means Render prompts for each one and
 # stores it, so nothing sensitive is ever committed.
 #
 # What each one is for:
 #   CONFORMANCE_SIGNING_KEY  REQUIRED. base64 of a 32-byte Ed25519 seed. The
-#                            process refuses to start without it — signing a
-#                            certificate is the point. Generate a fresh one:
+#                            process refuses to start without it, because signing
+#                            a certificate is the point. Generate a fresh one:
 #                            node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 #   RAZORPAY_KEY_ID          For the checkout surface. Must be an rzp_test_ key;
 #   RAZORPAY_KEY_SECRET      the guard refuses a live key at construction, so a
 #                            live key here fails the health check rather than
 #                            moving money. Omit both and the argument and
 #                            playground still work; only checkout is disabled.
-#
-# GEMINI_API_KEY is deliberately absent: the deployed console runs the semantic
-# judge as a captured stub on purpose (that is the demonstration — the gate
-# holds while the model is compromised), so the web service never calls Gemini.
+#   GEMINI_API_KEY           OPTIONAL. Leave it unset and every preset runs the
+#                            semantic judge as a captured stub, which is the
+#                            default demonstration: the gate holds while the
+#                            model is compromised. Set it and the Sandbox tab
+#                            gains a live path that runs the real model on
+#                            demand. Even then the model can only escalate,
+#                            never approve. Get a key from Google AI Studio
+#                            (aistudio.google.com/apikey).
 services:
   - type: web
     name: pakka
@@ -33,4 +37,7 @@ services:
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
+        sync: false
+      # Optional. Unset = captured stub everywhere. Set = live model in Sandbox.
+      - key: GEMINI_API_KEY
         sync: false
