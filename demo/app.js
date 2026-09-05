@@ -1302,8 +1302,8 @@ function ckPaymentPanel() {
       <span class="ck-flow">intent flow</span>
     </div>
     <div class="ck-testhelp">
-      <span class="ck-testhelp-tag">test mode · use any values</span>
-      <p>The Razorpay popup runs on sandbox data. Enter any phone number and email, pick any UPI app or use the <b>success@razorpay</b> shortcut below, and when it asks for an OTP just type any digits - no code is sent to your phone and no money moves. Cards and netbanking accept any test detail the same way.</p>
+      <span class="ck-testhelp-tag">test mode</span>
+      <p>Nothing here charges a real account. The quickest path is the <b>success@razorpay</b> shortcut below; the exact test values to type in the popup sit by the pay button.</p>
     </div>
     <div class="ck-upi">${tiles}</div>
     <div class="ck-or"><span></span><span class="ck-or-text">or pay by any UPI app</span><span></span></div>
@@ -1333,9 +1333,14 @@ function ckCommit(dec, r) {
     : held
       ? 'this cart is held, approving records a human override on the certificate'
       : 'cart hash re-checked against the certificate at authorisation';
+  const act = held ? 'Approve and pay' : 'Pay';
   return `<div class="ck-panel ck-commit">
+    <div class="ck-payhint">
+      <span class="ck-payhint-tag">test mode · use test values</span>
+      <p>${esc(act)} opens the Razorpay popup, and it will not charge anything. Enter <b>any</b> phone number and, if it asks, <b>any</b> OTP. To pay by card use the test card <b>4111 1111 1111 1111</b> with any future expiry and any CVV. The one-tap path is the <b>success@razorpay</b> UPI ID above.</p>
+    </div>
     <button class="ck-paybtn" data-act="pay"${paying ? ' disabled' : ''}><span class="ck-paybtn-label">${esc(label)}</span></button>
-    <div class="ck-paynote"><span>${esc(note)}</span><span>Razorpay · test mode · no money moves</span></div>
+    <div class="ck-paynote"><span>${esc(note)}</span><span class="ck-paynote-flag">test mode · no money moves</span></div>
     <div class="ck-trust">
       <div class="ck-trust-item ck-trust-haldi"><span></span><p>In test mode a <em>cancelled</em> UPI payment resolves as a successful one, cancellation can only be tested live. Printed rather than left to look like a success we earned.</p></div>
       <div class="ck-trust-item ck-trust-grey"><span></span><p>Reserve sizing follows NPCI OC-228, triangulated from three secondary sources; the primary circular returns HTTP 403 to automated fetching.</p></div>

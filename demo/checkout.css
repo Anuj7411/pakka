@@ -273,9 +273,47 @@
 .ck-paybtn:hover:not(:disabled) { background: var(--haldi); color: var(--ink); transform: translateY(-3px); box-shadow: 0 3px 0 var(--ink); }
 .ck-paybtn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
 .ck-paybtn:disabled { background: rgba(14, 16, 12, .1); color: rgba(14, 16, 12, .7); cursor: default; }
+/* The guidance a first-time tester needs, right where the popup is triggered:
+   the hosted Razorpay dialog cannot be relabelled from here, so this says
+   plainly what to type in it. Placed at the pay button rather than the top of
+   the panel, because that is where the eye is when the popup opens. */
+.ck-payhint {
+  margin-bottom: 16px;
+  padding: 13px 16px 14px;
+  background: rgba(232, 196, 0, .16);
+  border: 1px solid rgba(232, 196, 0, .6);
+}
+.ck-payhint-tag {
+  display: inline-block;
+  margin-bottom: 8px;
+  font: 600 9.5px/1.5 'Martian Mono';
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--haldi);
+  padding: 3px 9px;
+}
+.ck-payhint p {
+  margin: 0;
+  font: 400 12.5px/1.62 'Martian Mono';
+  color: rgba(14, 16, 12, .84);
+  overflow-wrap: break-word;
+}
+.ck-payhint b { font-weight: 600; color: var(--ink); }
+
 .ck-paynote { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
 .ck-paynote span { font: 400 11px/1.5 'Martian Mono'; color: var(--muted); }
-.ck-paynote span:last-child { font-size: 10.5px; }
+/* The reassurance flag is a solid haldi chip, not faint grey, so "no money
+   moves" is actually legible against the page. */
+.ck-paynote span.ck-paynote-flag {
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--haldi);
+  padding: 4px 10px;
+}
 
 /* trust cues sit under the commit, where hesitation happens */
 .ck-trust {
