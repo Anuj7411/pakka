@@ -899,12 +899,15 @@ createServer((req, res) => {
   }
 
   // Brand artwork. The name is matched rather than joined so a traversal
-  // sequence cannot address anything outside demo/assets.
-  const asset = /^\/assets\/([A-Za-z0-9._-]+\.svg)$/.exec(path);
+  // sequence cannot address anything outside demo/assets. SVG is the source of
+  // record for on-page marks; the PNG exists because link-preview crawlers do
+  // not load webfonts, so the social card ships as a raster.
+  const asset = /^\/assets\/([A-Za-z0-9._-]+\.(svg|png))$/.exec(path);
   if (asset) {
     const file = join(here, 'assets', asset[1]!);
     if (existsSync(file)) {
-      res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+      const type = asset[2] === 'png' ? 'image/png' : 'image/svg+xml';
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
       res.end(readFileSync(file));
       return;
     }
