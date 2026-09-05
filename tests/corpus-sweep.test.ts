@@ -20,7 +20,7 @@ const DATA_DIR = join(process.cwd(), 'data');
 const hasData = existsSync(join(DATA_DIR, 'items_human_ins.json'));
 
 describe.skipIf(!hasData)('corpus sweep: every instruction record', () => {
-  const data = loadWebShop(DATA_DIR);
+  const data = hasData ? loadWebShop(DATA_DIR) : (undefined as unknown as ReturnType<typeof loadWebShop>);
 
   it('every instruction has non-empty text and a well-formed ASIN', () => {
     const bad: string[] = [];
@@ -99,7 +99,7 @@ describe.skipIf(!hasData)('corpus sweep: every instruction record', () => {
 });
 
 describe.skipIf(!hasData)('corpus sweep: every product', () => {
-  const data = loadWebShop(DATA_DIR);
+  const data = hasData ? loadWebShop(DATA_DIR) : (undefined as unknown as ReturnType<typeof loadWebShop>);
 
   it('no product yields a NaN, negative, or fractional price', () => {
     const bad: string[] = [];

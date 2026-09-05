@@ -71,7 +71,7 @@ describe('webshop: pure parsers', () => {
 });
 
 describe.skipIf(!hasData)('webshop: real data', () => {
-  const data = loadWebShop(DATA_DIR);
+  const data = hasData ? loadWebShop(DATA_DIR) : (undefined as unknown as ReturnType<typeof loadWebShop>);
 
   it('loads the full instruction pool', () => {
     // Verified by inspection: 12,251 records across 10,136 ASINs.
