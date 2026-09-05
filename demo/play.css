@@ -15,14 +15,17 @@
  */
 
 .pv-play {
-  /* Surfaces: Paper has no headroom to rise, so the system recesses. The canvas
-     is sunk 12.7 luminance points below the panels, which read as raised. */
-  --canvas: #E6E2D6;
-  --surface: #F5F2E9;
-  --sunken: #DED9CB;
+  /* Surfaces: a warm off-white, sat between the old cream and pure white. The
+     panels are the lightest, the page canvas a few luminance points below
+     them, the strips a few below that, which is what makes a panel read as
+     raised. Kept warm so it reads soft rather than clinical against Haldi and
+     Vermilion. */
+  --canvas: #EFECE3;
+  --surface: #FAF8F2;
+  --sunken: #E4E0D5;
 
   --ink: #0E100C;
-  --paper: #F5F2E9;
+  --paper: #FAF8F2;
   --haldi: #E8C400;
   --vermilion: #D8341B;
   --go: #17734A;

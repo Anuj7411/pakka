@@ -20,12 +20,14 @@
  */
 
 .ck-page {
-  --canvas: #E6E2D6;
-  --surface: #F5F2E9;
-  --sunken: #DED9CB;
+  /* Warm off-white surface scale, matching the playground: soft off-white
+     panels that recess the page canvas and the strips a step below it. */
+  --canvas: #EFECE3;
+  --surface: #FAF8F2;
+  --sunken: #E4E0D5;
 
   --ink: #0E100C;
-  --paper: #F5F2E9;
+  --paper: #FAF8F2;
   --haldi: #E8C400;
   --vermilion: #D8341B;
   --vermilion-t: #A8240F;

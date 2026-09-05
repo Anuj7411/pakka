@@ -13,7 +13,7 @@
 
 :root {
   /* Colour. Vermilion is deliberately not a token: it is never themed. */
-  --pk-bg: #F5F2E9;
+  --pk-bg: #FAF8F2;
   --pk-fg: #0E100C;
   --pk-rule: rgba(14, 16, 12, .18);
   --pk-rule-strong: rgba(14, 16, 12, .42);
@@ -47,7 +47,7 @@
   --pk-allow: #0F8A4A;
   --pk-allow-wash: rgba(15, 138, 74, 0.06);
   --pk-ink: #0E100C;
-  --pk-paper: #F5F2E9;
+  --pk-paper: #FAF8F2;
 }
 
 /* ── base ─────────────────────────────────────────────────────────────── */
@@ -109,6 +109,20 @@ input { font-family: 'Martian Mono', ui-monospace, monospace; }
   margin-inline: auto;
   width: 100%;
   padding-inline: var(--pk-edge);
+}
+
+/* The checkout view is a self-contained page: it carries its own dark nav, its
+   own stepper, and `min-height: 100vh`. It must NOT get `.pk-checkout`'s
+   nav-clearance top padding, which was for the old inline checkout under the
+   shared sticky nav and here just dropped the whole page 88px down the screen.
+   Instead the page is centred as one column on wide screens, its own bands
+   spanning that column edge to edge, so it reads as a framed, deliberate
+   checkout rather than a full-bleed sheet. Below the cap it is simply
+   full-width. */
+.pk-checkout-shell {
+  width: 100%;
+  max-width: 1320px;
+  margin-inline: auto;
 }
 
 [hidden] { display: none !important; }
