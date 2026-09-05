@@ -1106,3 +1106,16 @@
 }
 .pv-empty .dev-plate { width: min(440px, 86vw); height: auto; }
 .pv-empty-note { margin: 0; font: 400 14px/1.55 Archivo; color: var(--muted); text-align: center; }
+
+/* The select-but-not-run prompt (lighter than the plate empty state). */
+.pv-prompt {
+  padding: 40px 24px 56px;
+  text-align: center;
+}
+.pv-prompt p {
+  margin: 0 auto;
+  max-width: 52ch;
+  font: 400 14px/1.6 Archivo;
+  color: var(--muted);
+}
+.pv-prompt b { color: var(--ink); font-weight: 600; }

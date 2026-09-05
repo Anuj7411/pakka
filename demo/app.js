@@ -751,6 +751,16 @@ function pvTabs() {
   </div>`;
 }
 
+/** Shown when a direction is selected but not yet run this selection. Light, no
+ *  plate: the plate is reserved for the one first-run empty state. */
+function pvSelectPrompt() {
+  const d = (state.meta.directions || []).find((x) => x.id === state.selectedDirection);
+  const title = d ? d.title : 'this direction';
+  return `<div class="pv-prompt">
+    <p>Press <b>Run this</b> to run ${esc(title)} across a random domain. A run is signed into the audit chain, so nothing is signed until you press it.</p>
+  </div>`;
+}
+
 /** The playground empty state: the 1a plate, framed, shown when no run is up. */
 function pvEmptyState() {
   return `<div class="pv-empty">
@@ -1107,13 +1117,24 @@ function renderPlay() {
     : false;
 
   const enter = entered.play ? '' : ' is-enter';
-  // The one moment the playground has no verdict on screen: no run, not the
-  // sandbox, not mid-flight. The 1a plate is safe here because nothing is being
-  // decided, and it vacates the instant a run fills the well.
-  const noRun = !state.run && !state.running && !state.showCustom;
-  const body = noRun
-    ? pvEmptyState()
-    : `${pvInstruction()}${pvShelf()}${pvCart()}${pvVerdict()}${failure}${pvChecks()}${pvCertChain()}`;
+  // The result well shows the run only when it is the run for the CURRENT
+  // selection (the selected direction, or the sandbox). Switching tabs no longer
+  // runs anything, so a stale result must not linger under a different tab.
+  const selId = state.showCustom ? 'custom' : state.selectedDirection;
+  const onSelection =
+    (state.run && state.run.scenario && state.run.scenario.id === selId) ||
+    (state.running && state.activeScenario === selId);
+  const sections = `${pvInstruction()}${pvShelf()}${pvCart()}${pvVerdict()}${failure}${pvChecks()}${pvCertChain()}`;
+  // The 1a plate is the one empty state, shown before the first run of the
+  // session. After that, switching to a not-yet-run direction shows a light
+  // prompt rather than the plate (one plate per surface) or a stale result.
+  const body = onSelection
+    ? sections
+    : state.showCustom
+      ? ''
+      : state.run
+        ? pvSelectPrompt()
+        : pvEmptyState();
   $('#view-play').innerHTML =
     `<div class="pv-play${enter}">
       ${pvNavbar()}
@@ -1533,11 +1554,13 @@ const ACTIONS = {
   // The one primary button. It re-runs the selected direction on another of
   // its domains.
   run: (el) => runScenario(el.dataset.id),
-  // A tab. Selecting a direction runs it, the way pressing it always has.
+  // A tab SELECTS a direction; it does not run it. A run signs a certificate
+  // and grows the audit chain, so it must be a deliberate press of the panel's
+  // Run button, never a side effect of browsing the claims.
   'pick-dir': (el) => {
     state.selectedDirection = el.dataset.id;
     state.showCustom = false;
-    return runScenario(el.dataset.id);
+    render();
   },
   // The sandbox is the sixth tab. Selecting it does not run anything: its
   // inputs have to be set first, so its own button is the trigger.
