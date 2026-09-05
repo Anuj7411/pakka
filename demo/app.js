@@ -837,7 +837,7 @@ function pvSandboxBody() {
         </div>
       </div>`
     : `<div class="pv-live pv-live--off">
-        <span class="pv-live-note">The real model is off on this server. Set <code>GEMINI_API_KEY</code> to run genuine inference here; every run below uses the captured stub.</span>
+        <span class="pv-live-note">The real model is off on this server. Set <code>GROQ_API_KEY</code> (or <code>GEMINI_API_KEY</code>) to run genuine inference here; every run below uses the captured stub.</span>
       </div>`;
 
   const r = state.run;

@@ -41,3 +41,7 @@ services:
       # Optional. Unset = captured stub everywhere. Set = live model in Sandbox.
       - key: GEMINI_API_KEY
         sync: false
+      # Optional. Preferred live provider (faster, more generous free tier).
+      # Either GROQ_API_KEY or GEMINI_API_KEY enables the live sandbox.
+      - key: GROQ_API_KEY
+        sync: false

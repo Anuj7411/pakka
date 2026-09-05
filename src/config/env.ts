@@ -66,6 +66,10 @@ export function geminiApiKey(): string {
   return require_('GEMINI_API_KEY');
 }
 
+export function groqApiKey(): string {
+  return require_('GROQ_API_KEY');
+}
+
 /** True when credentials are present, without throwing. For test skipping. */
 export function hasRazorpayCredentials(): boolean {
   return read('RAZORPAY_KEY_ID') !== undefined && read('RAZORPAY_KEY_SECRET') !== undefined;
@@ -73,4 +77,8 @@ export function hasRazorpayCredentials(): boolean {
 
 export function hasGeminiKey(): boolean {
   return read('GEMINI_API_KEY') !== undefined;
+}
+
+export function hasGroqKey(): boolean {
+  return read('GROQ_API_KEY') !== undefined;
 }

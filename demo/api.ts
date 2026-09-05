@@ -35,15 +35,18 @@ import { AuditLog } from '../src/audit/log.js';
 import { signerFromEnv, verifierFromPublicKey } from '../src/cert/signing.js';
 import { certificateHash, verifyCertificate } from '../src/cert/certificate.js';
 import { createRazorpayClient, paymentSignatureMatches } from '../src/razorpay/client.js';
-import { razorpayCredentials, hasRazorpayCredentials, hasGeminiKey } from '../src/config/env.js';
+import { razorpayCredentials, hasRazorpayCredentials, hasGeminiKey, hasGroqKey } from '../src/config/env.js';
 import {
   type Provider,
   VerdictCache,
   CallBudget,
   withCacheAndBudget,
   withRateLimit,
+  firstWorking,
+  withSeedFallback,
 } from '../src/semantic/provider.js';
 import { createGeminiProvider } from '../src/semantic/gemini.js';
+import { createGroqProvider } from '../src/semantic/groq.js';
 import { toModelView } from '../src/semantic/redact.js';
 import { buildPrompt, SYSTEM_INSTRUCTION, type JudgeVerdict } from '../src/semantic/prompt.js';
 import type { Cart, Mandate } from '../src/corpus/types.js';
@@ -108,10 +111,17 @@ function providerFor(judge: Example['judge']): Provider {
  * any instruction embedded in a product listing, which the injection preset
  * demonstrates.
  */
-const LIVE_JUDGE = hasGeminiKey();
+// Providers in preference order. Groq first: its free tier is faster and far
+// more generous (30 RPM vs Gemini's ~10), so a live demo does not rate-limit.
+// Gemini is a free fallback if its key is present. Either alone is enough.
+const liveProviders: Provider[] = [];
+if (hasGroqKey()) liveProviders.push(createGroqProvider());
+if (hasGeminiKey()) liveProviders.push(createGeminiProvider());
+const LIVE_JUDGE = liveProviders.length > 0;
+const liveBase = LIVE_JUDGE ? firstWorking(liveProviders) : null;
+const liveModelId = liveBase ? liveBase.id : null;
 // One shared on-disk cache, so a repeated identical run is instant and free.
 const liveCache = LIVE_JUDGE ? new VerdictCache(join(packageRoot, 'audit', 'live-cache')) : null;
-const liveModelId = LIVE_JUDGE ? createGeminiProvider().id : null;
 
 interface RecordedCall {
   verdict: string;
@@ -147,12 +157,13 @@ function recordingProvider(inner: Provider): { provider: Provider; calls: Record
  */
 function liveProvider(): { provider: Provider; calls: RecordedCall[] } {
   const budget = new CallBudget(8);
-  // Interactive: fail fast. On a rate limit we do NOT sit and honour Gemini's
-  // retry-after (it can be tens of seconds), because a hung run is worse than
-  // an honest fail-safe. One attempt; a 429 becomes `unsure`, which escalates.
-  // Reliability for the demo comes from the warmed cache below, not from here.
-  const cached = withCacheAndBudget(withRateLimit(createGeminiProvider(), { minIntervalMs: 0, maxRetries: 0 }), liveCache!, budget);
-  return recordingProvider(cached);
+  // Interactive: fail fast. One attempt per provider (firstWorking falls to the
+  // next), no honouring of a long retry-after, because a hung run is worse than
+  // an honest fail-safe. A successful call is cached; a preset whose every
+  // provider failed falls back to its seeded verdict rather than escalating.
+  const cached = withCacheAndBudget(withRateLimit(liveBase!, { minIntervalMs: 0, maxRetries: 0 }), liveCache!, budget);
+  const resilient = withSeedFallback(cached, liveModelId!, liveSeedMap);
+  return recordingProvider(resilient);
 }
 
 /**
@@ -190,9 +201,19 @@ const PRESET_SEEDS: { itemIndex: number; inject: boolean; verdict: JudgeVerdict 
   },
 ];
 
-function seedCache(): void {
-  if (!LIVE_JUDGE || !liveCache || !liveModelId) return;
-  let seeded = 0;
+/**
+ * Build the seed map: each preset's cache key -> its stored verdict.
+ *
+ * The live provider is always tried first, so a working key produces a
+ * genuinely fresh call. This map is consulted only when every provider failed,
+ * so the three presets never fall to an escalate-on-outage; other carts still
+ * escalate honestly. Keys are computed against the same prompt the interactive
+ * path builds, so a prompt change invalidates the seed rather than serving a
+ * verdict formed under different rules.
+ */
+function buildSeedMap(): Map<string, JudgeVerdict> {
+  const map = new Map<string, JudgeVerdict>();
+  if (!LIVE_JUDGE || !liveModelId) return map;
   for (const s of PRESET_SEEDS) {
     const ex = buildCustom({ itemIndex: s.itemIndex, quantity: 1, statedQuantity: 1, authorisedCategory: 'Tools & Home Improvement', inject: s.inject });
     if ('error' in ex) continue;
@@ -202,11 +223,12 @@ function seedCache(): void {
     const assigned = assignLines(cart, ex.mandate).get(line.lineId);
     if (!assigned) continue;
     const req = { system: SYSTEM_INSTRUCTION, user: buildPrompt(toModelView(assigned.item, line)) };
-    const key = VerdictCache.key(req, liveModelId);
-    if (!liveCache.get(key)) { liveCache.set(key, s.verdict); seeded++; }
+    map.set(VerdictCache.key(req, liveModelId), s.verdict);
   }
-  console.log(`live seed   : ${seeded}/${PRESET_SEEDS.length} preset verdicts seeded (no API calls)`);
+  return map;
 }
+
+const liveSeedMap = buildSeedMap();
 
 /** The lines the model will actually be asked about, in the order judgeCart asks. */
 function consultedLineIds(cart: Cart, mandate: Mandate): string[] {
@@ -904,9 +926,5 @@ console.log(`signing key : ${signer.keyId} (Ed25519)`);
 console.log(`audit log   : ${log.path}`);
 console.log(`razorpay    : ${razorpay.enabled ? `${razorpay.keyId} (test mode)` : `off - ${razorpay.reason}`}`);
 console.log(`judge       : captured stub · satisfies at 1.00, every line`);
-console.log(`live judge   : ${LIVE_JUDGE ? `${liveModelId} · available in the sandbox` : 'off - set GEMINI_API_KEY to enable'}`);
+console.log(`live judge   : ${LIVE_JUDGE ? `${liveProviders.map((p) => p.id).join(' -> ')} · ${liveSeedMap.size} presets seeded as fallback` : 'off - set GROQ_API_KEY (or GEMINI_API_KEY) to enable'}`);
 console.log(`serving     : http://localhost:${PORT}`);
-
-// Seed the preset verdicts (no API calls), so the demo path is instant and
-// quota-independent. Non-preset carts still call the model live.
-seedCache();
