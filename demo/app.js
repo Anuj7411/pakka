@@ -726,7 +726,11 @@ function pvTabs() {
     .join('');
 
   const sandOn = state.showCustom;
-  return `<div class="pv-tabs" role="tablist" aria-label="Runs">
+  // The strip is wrapped so a non-scrolling parent can carry the edge fades
+  // that tell a phone there are more tabs off-screen. Without the wrap the
+  // fades would live inside the scroller and slide away with the tabs.
+  return `<div class="pv-tabwrap">
+    <div class="pv-tabs" role="tablist" aria-label="Runs">
     ${tabs}
     <button class="pv-tab pv-tab--sandbox${sandOn ? ' is-active' : ''}" style="--d:${dirs.length}"
       role="tab" id="pv-tab-custom" aria-selected="${sandOn}" aria-controls="pv-runpanel"
@@ -736,6 +740,7 @@ function pvTabs() {
       <span class="pv-tab-title">Sandbox</span>
       <span class="pv-tab-verdict pv-tab-verdict--any">your call</span>
     </button>
+    </div>
   </div>`;
 }
 
@@ -1141,6 +1146,19 @@ function renderPlay() {
     const right = left + sel.offsetWidth;
     if (left < strip.scrollLeft) strip.scrollLeft = left;
     else if (right > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = right - strip.clientWidth;
+  }
+  // Edge fades: a phone shows three of six tabs, so the strip has to say the
+  // rest are there. A right fade means more tabs that way, a left fade means
+  // some scrolled off behind; both vanish at the ends so the cue never lies.
+  const tabwrap = $('.pv-tabwrap');
+  if (tabwrap && strip) {
+    const paintFades = () => {
+      const max = strip.scrollWidth - strip.clientWidth;
+      tabwrap.classList.toggle('is-fade-l', strip.scrollLeft > 2);
+      tabwrap.classList.toggle('is-fade-r', strip.scrollLeft < max - 2);
+    };
+    paintFades();
+    strip.addEventListener('scroll', paintFades, { passive: true });
   }
   if (wasOnTabs && sel) sel.focus({ preventScroll: true });
   entered.play = true;

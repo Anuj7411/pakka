@@ -125,8 +125,53 @@
      tab list stops reading as one row of peers. */
   overflow-x: auto;
   scrollbar-width: none;
+  /* Swiping lands on a tab edge, not mid-label. */
+  scroll-snap-type: x proximity;
+  scroll-behavior: smooth;
 }
 .pv-tabs::-webkit-scrollbar { display: none; }
+.pv-tab { scroll-snap-align: start; }
+
+/* The wrap holds the scroll cues. On a phone only three of six tabs fit, so a
+   fade at each live edge says the rest are a swipe away. The fades ride the
+   non-scrolling wrap, match the strip's own colour so tabs look like they melt
+   off the edge, and are toggled by scroll position so neither one shows at rest
+   when there is nothing more that way. On desktop the strip never overflows, so
+   the JS leaves both off and these are inert. */
+.pv-tabwrap { position: relative; }
+.pv-tabwrap::before,
+.pv-tabwrap::after {
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  width: 46px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 140ms linear;
+  /* A chevron rides the fade so the cue is unmistakable, not just a dimmed
+     edge: it borrows the same ‹ › the seal and run buttons already use. */
+  display: flex;
+  align-items: center;
+  font: 600 17px/1 'Martian Mono', monospace;
+  color: var(--muted);
+}
+.pv-tabwrap::before {
+  left: 0;
+  content: '\2039';
+  justify-content: flex-start;
+  padding-left: 7px;
+  background: linear-gradient(90deg, var(--sunken) 42%, transparent);
+}
+.pv-tabwrap::after {
+  right: 0;
+  content: '\203A';
+  justify-content: flex-end;
+  padding-right: 7px;
+  background: linear-gradient(270deg, var(--sunken) 42%, transparent);
+}
+.pv-tabwrap.is-fade-l::before { opacity: 1; }
+.pv-tabwrap.is-fade-r::after { opacity: 1; }
 
 .pv-tab {
   /* Equal share of the strip, allowed to shrink: six tabs of equal width read

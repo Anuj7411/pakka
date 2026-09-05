@@ -19,3 +19,4 @@ llm-cache/
 
 # Demo audit logs
 audit/
+.claude/
